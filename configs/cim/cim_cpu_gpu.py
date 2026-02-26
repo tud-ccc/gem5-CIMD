@@ -1,5 +1,6 @@
 """
-Config based on MIMDRAM Paper, Table 2
+Config for CPU and GPU loads (no PIM/CIM)
+Based on MIMDRAM Paper, Table 2
 """
 
 # import the m5 (gem5) library created when gem5 is built
@@ -20,6 +21,59 @@ def addOptions(parser):
     )
 
 
+# Define cache classes inline for self-contained configuration
+# Specs: L1 32KB 8-way 64B, L2 256KB 4-way 64B
+class L1ICache(Cache):
+    size = "32KiB"
+    assoc = 8
+    tag_latency = 2
+    data_latency = 2
+    response_latency = 2
+    mshrs = 16
+    tgts_per_mshr = 32
+    write_buffers = 400
+
+    def connectCPU(self, cpu):
+        self.cpu_side = cpu.icache_port
+
+    def connectBus(self, bus):
+        self.mem_side = bus.cpu_side_ports
+
+
+class L1DCache(Cache):
+    size = "32KiB"
+    assoc = 8
+    tag_latency = 2
+    data_latency = 2
+    response_latency = 2
+    mshrs = 16
+    tgts_per_mshr = 32
+    write_buffers = 400
+
+    def connectCPU(self, cpu):
+        self.cpu_side = cpu.dcache_port
+
+    def connectBus(self, bus):
+        self.mem_side = bus.cpu_side_ports
+
+
+class L2Cache(Cache):
+    size = "256KiB"
+    assoc = 4
+    tag_latency = 20
+    data_latency = 20
+    response_latency = 20
+    mshrs = 32
+    tgts_per_mshr = 24
+    write_buffers = 400
+
+    def connectCPUSideBus(self, bus):
+        self.cpu_side = bus.mem_side_ports
+
+    def connectMemSideBus(self, bus):
+        self.mem_side = bus.cpu_side_ports
+
+
 # create the system we are going to simulate
 system = System()
 
@@ -38,19 +92,36 @@ system.mem_ranges = [AddrRange("512MiB")]  # Create an address range
 system.cpu = X86TimingSimpleCPU()
 # system.cpu = X86O3CPU()           # Unfortunately this doesn't work yet
 
+# Create an L1 cache
+system.l1icache = L1ICache()
+system.l1icache.connectCPU(system.cpu)
+
+system.l1dcache = L1DCache()
+system.l1dcache.connectCPU(system.cpu)
+
+# Create a memory bus, a system crossbar, in this case
+system.l2bus = SystemXBar()
+system.l1icache.connectBus(system.l2bus)
+system.l1dcache.connectBus(system.l2bus)
+
+# Create an L2 cache
+system.l2cache = L2Cache()
+system.l2cache.connectCPUSideBus(system.l2bus)
+
 # Create a memory bus for L2 to memory
 system.membus = SystemXBar()
+system.l2cache.connectMemSideBus(system.membus)
 
 # Hook the CPU ports up to the L1 caches (already connected above)
-system.cpu.icache_port = system.membus.cpu_side_ports
-system.cpu.dcache_port = system.membus.cpu_side_ports
+# system.cpu.icache_port = system.membus.cpu_side_ports
+# system.cpu.dcache_port = system.membus.cpu_side_ports
 
 # create the interrupt controller for the CPU and connect to the membus
 system.cpu.createInterruptController()
 
 # For X86 only we make sure the interrupts care connect to memory.
 # Note: these are directly connected to the memory bus and are not cached.
-# For other ISA you should remove the following three lines.
+# For other isa you should remove the following three lines.
 system.cpu.interrupts[0].pio = system.membus.mem_side_ports
 system.cpu.interrupts[0].int_requestor = system.membus.cpu_side_ports
 system.cpu.interrupts[0].int_responder = system.membus.mem_side_ports
@@ -83,9 +154,7 @@ addOptions(parser)
 
 thispath = os.path.dirname(os.path.realpath(__file__))
 if options.cmd:
-    # Extract just the binary path (first element) for init_compatible
-    cmd_parts = shlex.split(options.cmd)
-    binary = cmd_parts[0]
+    binary = options.cmd
 else:
     binary = os.path.join(
         thispath,

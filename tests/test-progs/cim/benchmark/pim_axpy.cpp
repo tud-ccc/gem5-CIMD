@@ -1,3 +1,11 @@
+#ifndef N_ELEMS
+#define N_ELEMS 3000
+#endif
+
+#ifndef N_RUNS
+#define N_RUNS 10
+#endif
+
 #include "pim_core.h"
 #include <cstdint>
 #include <cstdio>
@@ -12,7 +20,6 @@
 using namespace pim_core;
 using namespace std;
 
-const size_t N_ELEMS = 3000;
 size_t next_mat = 0;
 
 using dtype = int16_t;
@@ -72,7 +79,7 @@ bool check_axpy_result(T* y, T* y_initial, T* x_initial, dtype alpha)
     return is_correct;
 }
 
-bool test_axpy()
+bool test_axpy(int run_id)
 {
     dtype alpha = 3;
 
@@ -84,8 +91,8 @@ bool test_axpy()
     auto temp = pim_alloc_safe<dtype>(N_ELEMS * sizeof(dtype), next_mat);
     auto scalar_alpha = pim_alloc_safe<dtype>(N_ELEMS * sizeof(dtype), next_mat);
 
-    printf("PIM memory allocated: x=%p, y=%p, temp=%p, scalar_alpha=%p\n",
-           x, y, temp, scalar_alpha);
+    printf("Run %d: PIM memory allocated: x=%p, y=%p, temp=%p, scalar_alpha=%p\n",
+           run_id, x, y, temp, scalar_alpha);
 
     rowtrsp_init(x, N_ELEMS, sizeof(dtype));
     rowtrsp_init(y, N_ELEMS, sizeof(dtype));
@@ -98,7 +105,7 @@ bool test_axpy()
         scalar_alpha[i] = alpha;
     }
 
-    printf("Data initialized. Running AXPY: y = %d * x + y\n", alpha);
+    printf("Run %d: Data initialized. Running AXPY: y = %d * x + y\n", run_id, alpha);
 
     m5_reset_stats(0, 0);
 
@@ -115,9 +122,9 @@ bool test_axpy()
     bool correct = check_axpy_result(y, y_initial, x_initial, alpha);
 
     if (correct) {
-        printf("AXPY test PASSED!\n");
+        printf("Run %d: AXPY test PASSED!\n", run_id);
     } else {
-        printf("AXPY test FAILED!\n");
+        printf("Run %d: AXPY test FAILED!\n", run_id);
     }
 
     free(x_initial);
@@ -128,21 +135,32 @@ bool test_axpy()
 
 int main()
 {
-    printf("Starting AXPY test with %zu elements\n", N_ELEMS);
+    printf("Starting AXPY test with %zu elements, %d runs\n", (size_t)N_ELEMS, N_RUNS);
 
-    bool result = false;
-    while(next_mat < NR_MATS && !result) {
-        result = test_axpy();
-        if (!result) {
-            next_mat++;
+    int passed_runs = 0;
+    for (int run = 0; run < N_RUNS; run++) {
+        printf("\n=== Run %d/%d ===\n", run + 1, N_RUNS);
+        
+        bool result = false;
+        while(next_mat < NR_MATS && !result) {
+            result = test_axpy(run + 1);
+            if (!result) {
+                next_mat++;
+            }
+        }
+
+        if (result) {
+            passed_runs++;
+            printf("\nAXPY test PASSED!\n");
+        } else {
+            printf("\nAXPY test FAILED - not enough PIM space\n");
         }
     }
 
-    if (result) {
-        printf("\nAll AXPY tests PASSED!\n");
+    printf("\n=== Summary: %d/%d runs passed ===\n", passed_runs, N_RUNS);
+    if (passed_runs == N_RUNS) {
         return 0;
     } else {
-        printf("\nAXPY tests FAILED - not enough PIM space\n");
         return 1;
     }
 }
