@@ -393,6 +393,18 @@ class LSQ
         RequestPtr req(int idx = 0) { return _reqs.at(idx); }
         const RequestPtr req(int idx = 0) const { return _reqs.at(idx); }
 
+        /**
+         * Mark a RowOp (PIM) store as translation-complete without performing
+         * address translation. RowOps are non-speculative stores whose
+         * payload already carries the (1:1-mapped) row addresses that the
+         * memory controller consumes; the store packet itself merely targets
+         * paddr 0 and is tagged Request::ROWOP (mirroring the in-order CPU
+         * path). This drives the request through the normal store writeback
+         * path so it is actually delivered to memory. Call after addReq().
+         * (Defined in lsq.cc, where DynInst is a complete type.)
+         */
+        void completeRowOp();
+
         Addr getVaddr(int idx = 0) const { return req(idx)->getVaddr(); }
         virtual void initiateTranslation() = 0;
 

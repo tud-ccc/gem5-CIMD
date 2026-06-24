@@ -12,6 +12,24 @@ def template RowOpDeclare {{
 
             this->flags[IsRowOp] = true;
             this->flags[IsStore] = true;
+            // RowOps read their operands (dst/src1/src2 row addresses, mask,
+            // size, n) directly from the architectural register file via
+            // tcBase()->getReg() in execute()/initiateAcc(). They do NOT
+            // declare these GPRs as ISA source operands, so an out-of-order
+            // (O3) CPU has no register dependency information for them and
+            // would otherwise issue the op speculatively, reading stale
+            // committed state and producing garbage addresses.
+            //
+            // Marking the op non-speculative forces O3 to defer execution
+            // until the instruction reaches the head of the ROB, at which
+            // point every older instruction (including the producers of
+            // rdi/rsi/rdx/rcx/r8/r9) has committed, so the architectural
+            // register file holds the correct values. IsSerializeAfter
+            // additionally re-fetches following instructions so nothing that
+            // depends on the RowOp's memory effects runs ahead of it.
+            // In-order CPUs (Atomic/Timing) are unaffected by these flags.
+            this->flags[IsNonSpeculative] = true;
+            this->flags[IsSerializeAfter] = true;
         }
 
         Fault execute(ExecContext *, trace::InstRecord *) const override;

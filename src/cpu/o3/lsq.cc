@@ -791,68 +791,35 @@ LSQ::pushRequest(const DynInstPtr& inst, bool isLoad, uint8_t *data,
             request = new UnsquashableDirectRequest(&thread[tid], inst, flags);
         } else if (is_row_op) {
 
-            // TODO: create `request`: make it `UnsquashableDirectRequest` or `SplitDataRequest` or sth different ?
-            // request = new Request(asid, addr, size, flags, masterId(), this->pc.instAddr(),
-            //                   thread->contextId(), threadNumber);
-
+            // RowOp (PIM) store.
+            //
+            // A RowOp is marked IsNonSpeculative (see RowOpDeclare in
+            // src/arch/x86/isa/microops/rowbit.isa), so it only executes once
+            // it is at the head of the ROB. The operand row addresses and the
+            // mask value carried in the payload are therefore the correct,
+            // committed values -- never speculative garbage -- and must be
+            // passed through unmodified (an earlier "round down to
+            // CIM_ROW_SIZE" band-aid collapsed distinct operands living in the
+            // same row-sized block and clobbered the mask, giving wrong
+            // results).
+            //
+            // The memory controller reads the row addresses directly from the
+            // payload (which are 1:1-mapped vaddr==paddr in the huge-page PIM
+            // pool, exactly as the in-order CPU path relies on), not from the
+            // packet address. So we do not translate the payload here; we set
+            // the store up as a completed, uncacheable write to paddr 0 tagged
+            // Request::ROWOP and let the ordinary store writeback path deliver
+            // it to memory. This mirrors how TimingSimpleCPU handles RowOps and
+            // avoids the (incomplete) speculative multi-translation path that
+            // never linked back to the LSQRequest, leaving the store stuck in
+            // the store queue forever.
             request = new SingleDataRequest(&thread[tid], inst, false, addr,
                     size, flags, data, res, std::move(amo_op));
-            RequestPtr req_dest, req_src1, req_src2, req_mask;
-
-            // If this is being executed speculatively, we might get wacky
-            // addresses, so round down
-            Request::RowOpPayload* addrs = (Request::RowOpPayload*)data;
-            addrs->dest = addrs->dest / CIM_ROW_SIZE * CIM_ROW_SIZE;
-            addrs->src1 = addrs->src1 / CIM_ROW_SIZE * CIM_ROW_SIZE;
-            addrs->src2 = addrs->src2 / CIM_ROW_SIZE * CIM_ROW_SIZE;
-            addrs->mask = addrs->mask / CIM_ROW_SIZE * CIM_ROW_SIZE;
-
-
-            // request->initiateTranslation();
+            request->_byteEnable = byte_enable;
             request->addReq(addr, size, byte_enable);
-            request->mainReq()->splitRowOp(addrs, req_dest, req_src1, req_src2, req_mask);
-
-            // TODO: when
-            inst->translationStarted(true);
-
-            WholeTranslationState *state =
-                new WholeTranslationState(request->req(), req_dest, req_src1, req_src2, req_mask,
-                        data, res, BaseMMU::Write);
-
-            // FIXME: can we really issue 3 translations in Out-of-order Exec ?? (this is done in MIMDRAM)
-            DataTranslation<DynInstPtr> *trans1 =
-                new DataTranslation<DynInstPtr>(inst, state, 0);
-            cpu->mmu->translateTiming(req_dest, cpu->thread[tid]->getTC(), trans1, BaseMMU::Write);
-
-            if (req_src1 != NULL) {
-                DataTranslation<DynInstPtr> *trans2 =
-                       new DataTranslation<DynInstPtr>(inst, state, 1);
-                cpu->mmu->translateTiming(req_src1, cpu->thread[tid]->getTC(), trans2, BaseMMU::Write);
-            }
-
-            // Only include the third address if it is non-NULL, to account for NOT
-            // operations
-            if (req_src2 != NULL) {
-                DataTranslation<DynInstPtr> *trans3 =
-                    new DataTranslation<DynInstPtr>(inst, state, 2);
-                cpu->mmu->translateTiming(req_src2, cpu->thread[tid]->getTC(), trans3, BaseMMU::Write);
-            }
-
-
-            // TODO: what to do with this?:
-            if (!request->isTranslationComplete()) {
-                // The translation isn't yet complete, so we can't possibly have a
-                // fault. Overwrite any existing fault we might have from a previous
-                // execution of this instruction (e.g. an uncachable load that
-                // couldn't execute because it wasn't at the head of the ROB).
-                // fault = NoFault;
-                inst->getFault() = NoFault;
-            //
-            //     // Save memory requests.
-            //     savedReq = state->mainReq;
-            //     savedSreqLow = state->sreqLow;
-            //     savedSreqHigh = state->sreqHigh;
-            }
+            request->taskId(cpu->taskId());
+            inst->setRequest();
+            request->completeRowOp();
         } else if (needs_burst) {
             request = new SplitDataRequest(&thread[tid], inst, isLoad, addr,
                     size, flags, data, res);
@@ -989,6 +956,22 @@ LSQ::SplitDataRequest::finish(const Fault &fault, const RequestPtr &req,
         }
 
     }
+}
+
+void
+LSQ::LSQRequest::completeRowOp()
+{
+    assert(_reqs.size() == 1);
+    req()->setPaddr(0);
+    flags.set(Flag::TranslationStarted);
+    flags.set(Flag::TranslationFinished);
+    setState(State::Request);
+    _inst->translationStarted(true);
+    _inst->savedRequest = this;
+    _inst->physEffAddr = 0;
+    _inst->memReqFlags = req()->getFlags();
+    _inst->fault = NoFault;
+    _inst->translationCompleted(true);
 }
 
 void
