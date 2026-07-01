@@ -1,6 +1,5 @@
-#include "pim_core.h"
+#include "cim_core.h"
 #include <cstddef>
-#include <cstdint>
 #include <cstdlib>
 #include <cstdio>
 #include <iostream>
@@ -113,7 +112,7 @@ void *find_free_space_in_subarray(SubarrayMeta* subarray, const size_t size, con
 }
 
 /// Performs allocation of operands in the region reserved for PIM
-void* pim_malloc(const size_t size, const size_t subarray_label) {
+void* cim_malloc(const size_t size, const size_t subarray_label) {
     // sanity check
     if (size > SUBARRAY_SIZE_BYTES) {
         return nullptr;
@@ -156,7 +155,7 @@ void* pim_malloc(const size_t size, const size_t subarray_label) {
     void* next_hugepage_start = ((char*) PIM_BASE_ADDR) + (pim_pages_allocated * HUGE_PAGE_SIZE);
     auto ret = mmapPim(next_hugepage_start, size, subarray_label);
     if (ret == MAP_FAILED || !next_hugepage_start) {
-        std::fprintf(stderr, "pim_malloc: failed to allocate %zu bytes\n", size);
+        std::fprintf(stderr, "cim_malloc: failed to allocate %zu bytes\n", size);
         return nullptr;
     }
     pim_pages_allocated++;
@@ -169,14 +168,14 @@ void* pim_malloc(const size_t size, const size_t subarray_label) {
     return allocate_from_subarray(&subarrays.back());
 }
 
-/// Frees the memory previously allocated with `pim_malloc()`
-void pim_free(void* ptr) {
+/// Frees the memory previously allocated with `cim_malloc()`
+void cim_free(void* ptr) {
     if (!ptr) return;
 
     // Look up allocation header
     auto it = alloc_headers.find(ptr);
     if (it == alloc_headers.end()) {
-        cerr << "ERROR: pim_free called with unknown pointer " << ptr << endl;
+        cerr << "ERROR: cim_free called with unknown pointer " << ptr << endl;
         return;
     }
 

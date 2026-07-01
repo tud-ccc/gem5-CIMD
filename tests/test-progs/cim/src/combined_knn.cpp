@@ -5,7 +5,7 @@
  * Testing: compute distances using PIM with full parallelism across all samples
  */
 
-#include "pim_core.h"
+#include "cim_core.h"
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -25,7 +25,7 @@ T* pim_alloc_safe(size_t size_bytes, size_t& next_mat) {
     T* ptr = nullptr;
 
     do {
-        ptr = static_cast<T*>(pim_malloc(size_bytes, next_mat));
+        ptr = static_cast<T*>(cim_malloc(size_bytes, next_mat));
         if (ptr != nullptr) break;
         next_mat++;
     } while (next_mat < NR_SUBARRAYS);
@@ -70,11 +70,11 @@ struct KNNWorkspace {
     }
 
     ~KNNWorkspace() {
-        pim_free(distances);
-        pim_free(diff);
-        pim_free(diff_sq);
+        cim_free(distances);
+        cim_free(diff);
+        cim_free(diff_sq);
         for (size_t f = 0; f < N_FEATURES; ++f) {
-            pim_free(query_features[f]);
+            cim_free(query_features[f]);
         }
     }
 };
@@ -225,8 +225,8 @@ int main() {
 
 	// Cleanup
 	for (size_t f = 0; f < N_FEATURES; ++f) {
-		pim_free(train.features[f]);
-		pim_free(test.features[f]);
+		cim_free(train.features[f]);
+		cim_free(test.features[f]);
 	}
 	// workspace destructor will clean up PIM arrays
 

@@ -1,4 +1,4 @@
-#include "pim_core.h"
+#include "cim_core.h"
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -18,9 +18,9 @@ void test_every_rowop()
 	auto array1_initial_val = static_cast<uint16_t*>(malloc(N_ELEMS));
 	auto array2_initial_val = static_cast<uint16_t*>(malloc(N_ELEMS));
 #endif
-	auto array1 = static_cast<uint16_t*>(pim_malloc(N_ELEMS, 0));
-	auto array2 = static_cast<uint16_t*>(pim_malloc(N_ELEMS, 0));
-	std::printf("Ran pim_malloc and got ptr array1=%p, array2=%p\n", array1, array2);
+	auto array1 = static_cast<uint16_t*>(cim_malloc(N_ELEMS, 0));
+	auto array2 = static_cast<uint16_t*>(cim_malloc(N_ELEMS, 0));
+	std::printf("Ran cim_malloc and got ptr array1=%p, array2=%p\n", array1, array2);
 
 	// 1. Write data
 	for(int i=0; i<N_ELEMS; ++i) {
@@ -34,7 +34,6 @@ void test_every_rowop()
 #endif
 	}
 
-	// TODO: perform ROWAND !
 	rowand(array1, array2, array1, N_ELEMS, sizeof(uint16_t));
 	// rowand(array1, array2, array1);
 	// rowand(array1, array2, array1);
@@ -63,8 +62,8 @@ int main(int argc, char* argv[])
 {
 
 	cout << "Running pim_full_program.cpp" << endl;
-	auto array1 = static_cast<dtype*>(pim_malloc(sizeof(dtype)*N_ELEMS, 0));
-	auto array2 = static_cast<dtype*>(pim_malloc(sizeof(dtype)*N_ELEMS, 0));
+	auto array1 = static_cast<dtype*>(cim_malloc(sizeof(dtype)*N_ELEMS, 0));
+	auto array2 = static_cast<dtype*>(cim_malloc(sizeof(dtype)*N_ELEMS, 0));
 	// 1. Write data
 	for(uint16_t i=0; i<N_ELEMS; ++i) {
 		// array1[i] = 1;
@@ -73,7 +72,7 @@ int main(int argc, char* argv[])
 		// array2[i] = -1;
 	}
 
-	std::printf("Ran pim_malloc and got ptr array1=%p, array2=%p\n", array1, array2);
+	std::printf("Ran cim_malloc and got ptr array1=%p, array2=%p\n", array1, array2);
 	rowand(array1, array2, array1, N_ELEMS, sizeof(uint16_t));
 
 	for(uint16_t i=0; i<N_ELEMS; ++i) {

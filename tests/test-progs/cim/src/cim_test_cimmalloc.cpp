@@ -1,4 +1,4 @@
-#include "pim_core.h"
+#include "cim_core.h"
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -73,21 +73,21 @@ bool test_every_rowop()
 	size_t nr_correct = 0;
 	auto array1_initial_val = static_cast<uint16_t*>(malloc(N_ELEMS*sizeof(dtype)));
 	auto array2_initial_val = static_cast<uint16_t*>(malloc(N_ELEMS*sizeof(dtype)));
-	auto array1 = static_cast<uint16_t*>(pim_malloc(N_ELEMS*sizeof(dtype), 0));
+	auto array1 = static_cast<uint16_t*>(cim_malloc(N_ELEMS*sizeof(dtype), 0));
 	if (!array1) {
 		printf("NOTE: Not enough space left in current mat \n");
 		next_mat++;
 		return false;
 	}
 
-	auto array2 = static_cast<uint16_t*>(pim_malloc(N_ELEMS*sizeof(dtype), 0));
+	auto array2 = static_cast<uint16_t*>(cim_malloc(N_ELEMS*sizeof(dtype), 0));
 	if (!array2) {
 		printf("NOTE: Not enough space left in current mat \n");
-		pim_free(array1); // TODO !!
+		cim_free(array1); // TODO !!
 		next_mat++;
 		return false;
 	}
-	std::printf("Ran pim_malloc and got ptr array1=%p, array2=%p\n", array1, array2);
+	std::printf("Ran cim_malloc and got ptr array1=%p, array2=%p\n", array1, array2);
 
 	cout << "AND..." << endl;
 	init_data(array1, array2, array1_initial_val, array2_initial_val);
@@ -136,21 +136,21 @@ size_t fuzzy_testing()
 	size_t nr_correct = 0;
 	auto array1_initial_val = static_cast<uint16_t*>(malloc(N_ELEMS*sizeof(dtype)));
 	auto array2_initial_val = static_cast<uint16_t*>(malloc(N_ELEMS*sizeof(dtype)));
-	auto array1 = static_cast<uint16_t*>(pim_malloc(N_ELEMS*sizeof(dtype), 0));
+	auto array1 = static_cast<uint16_t*>(cim_malloc(N_ELEMS*sizeof(dtype), 0));
 	if (!array1) {
 		printf("NOTE: Not enough space left in current mat \n");
 		next_mat++;
 		return 0;
 	}
 
-	auto array2 = static_cast<uint16_t*>(pim_malloc(N_ELEMS*sizeof(dtype), 0));
+	auto array2 = static_cast<uint16_t*>(cim_malloc(N_ELEMS*sizeof(dtype), 0));
 	if (!array2) {
 		printf("NOTE: Not enough space left in current mat \n");
-		pim_free(array1); // TODO !!
+		cim_free(array1); // TODO !!
 		next_mat++;
 		return 0;
 	}
-	std::printf("Ran pim_malloc and got ptr array1=%p, array2=%p\n", array1, array2);
+	std::printf("Ran cim_malloc and got ptr array1=%p, array2=%p\n", array1, array2);
 
 	cout << "AND..." << endl;
 	init_data_fuzzy(array1, array2, array1_initial_val, array2_initial_val);

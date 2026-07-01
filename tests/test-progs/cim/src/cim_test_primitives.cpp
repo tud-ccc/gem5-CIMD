@@ -1,4 +1,4 @@
-#include "pim_core.h"
+#include "cim_core.h"
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -21,7 +21,7 @@ T* pim_alloc_safe(size_t size_bytes, size_t& next_mat) {
     T* ptr = nullptr;
 
     do {
-        ptr = static_cast<T*>(pim_malloc(size_bytes, next_mat));
+        ptr = static_cast<T*>(cim_malloc(size_bytes, next_mat));
         if (ptr != nullptr) break;
         next_mat++;
     } while (next_mat < NR_SUBARRAYS);
@@ -123,21 +123,21 @@ bool test_every_rowop()
 	size_t nr_correct = 0;
 	auto array1_initial_val = static_cast<dtype*>(malloc(N_ELEMS*sizeof(dtype)));
 	auto array2_initial_val = static_cast<dtype*>(malloc(N_ELEMS*sizeof(dtype)));
-	auto array1 = static_cast<dtype*>(pim_malloc(N_ELEMS*sizeof(dtype), next_mat));
+	auto array1 = static_cast<dtype*>(cim_malloc(N_ELEMS*sizeof(dtype), next_mat));
 	if (!array1) {
 		printf("NOTE: Not enough space left in current mat \n");
 		next_mat++;
 		return false;
 	}
 
-	auto array2 = static_cast<dtype*>(pim_malloc(N_ELEMS*sizeof(dtype), next_mat));
+	auto array2 = static_cast<dtype*>(cim_malloc(N_ELEMS*sizeof(dtype), next_mat));
 	if (!array2) {
 		printf("NOTE: Not enough space left in current mat \n");
-		pim_free(array1); // TODO !!
+		cim_free(array1); // TODO !!
 		next_mat++;
 		return false;
 	}
-	std::printf("Ran pim_malloc and got ptr array1=%p, array2=%p\n", array1, array2);
+	std::printf("Ran cim_malloc and got ptr array1=%p, array2=%p\n", array1, array2);
 	rowtrsp_init(array1, N_ELEMS, sizeof(dtype));
 	rowtrsp_init(array2, N_ELEMS, sizeof(dtype));
 
@@ -274,32 +274,32 @@ size_t fuzzy_testing()
 	size_t nr_correct = 0;
 	auto array1_initial_val = static_cast<dtype*>(malloc(N_ELEMS*sizeof(dtype)));
 	auto array2_initial_val = static_cast<dtype*>(malloc(N_ELEMS*sizeof(dtype)));
-	auto array1 = static_cast<dtype*>(pim_malloc(N_ELEMS*sizeof(dtype), next_mat));
+	auto array1 = static_cast<dtype*>(cim_malloc(N_ELEMS*sizeof(dtype), next_mat));
 	if (!array1) {
 		printf("NOTE: Not enough space left in current mat \n");
 		next_mat++;
 		return 0;
 	}
 
-	auto array2 = static_cast<dtype*>(pim_malloc(N_ELEMS*sizeof(dtype), next_mat));
+	auto array2 = static_cast<dtype*>(cim_malloc(N_ELEMS*sizeof(dtype), next_mat));
 	if (!array2) {
 		printf("NOTE: Not enough space left in current mat \n");
 		// give up PIM space to other applications
-		pim_free(array1);
+		cim_free(array1);
 		next_mat++;
 		return 0;
 	}
 
-	auto array_res = static_cast<dtype*>(pim_malloc(N_ELEMS*sizeof(dtype), next_mat));
+	auto array_res = static_cast<dtype*>(cim_malloc(N_ELEMS*sizeof(dtype), next_mat));
 	if (!array_res) {
 		printf("NOTE: Not enough space left in current mat \n");
-		pim_free(array1);
-		pim_free(array2);
+		cim_free(array1);
+		cim_free(array2);
 		next_mat++;
 		return 0;
 	}
 
-	std::printf("Ran pim_malloc and got ptr array1=%p, array2=%p\n", array1, array2);
+	std::printf("Ran cim_malloc and got ptr array1=%p, array2=%p\n", array1, array2);
 	init_data_fuzzy(array1, array2, array1_initial_val, array2_initial_val);
 
 	m5_reset_stats(0, 0);

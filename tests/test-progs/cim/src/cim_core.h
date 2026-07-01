@@ -26,8 +26,8 @@ void* mmapPim(void* addr, size_t length);
 /**
  * @param size in BYTES !!
  */
-void* pim_malloc(size_t size, size_t subarray_label);
-void pim_free(void* ptr);
+void* cim_malloc(size_t size, size_t subarray_label);
+void cim_free(void* ptr);
 
 /**
  * @oaram n in **BITS** (since we also allow for <1byte, eg 4bit operands are supported

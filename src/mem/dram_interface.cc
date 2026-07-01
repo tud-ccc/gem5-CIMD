@@ -411,7 +411,7 @@ DRAMInterface::doBurstAccess(MemPacket* mem_pkt, Tick next_burst_at,
 		// - this code corresponds to the translation into μPrograms
 		// (done by a *Control Unit*) described in Chap4.1 of the MIMDRAM Paper
 
-		int nr_spanned_rows = size/colsPerSubarray; //
+		int nr_spanned_rows = size/colsPerSubarray + 1; //
         DPRINTF(RowOp, "DRAMCtrl recieved RowOp=%d Packet to rank=%d, bank=%d, size=%lu, n=%lu (spanning %d rows) \n",
                 *mem_pkt->row_op, mem_pkt->rank, mem_pkt->bank, size, n, nr_spanned_rows);
 		while(nr_spanned_rows--) {
@@ -1561,6 +1561,7 @@ DRAMInterface::executeAmbitMicroprogram(
     }
 
     DPRINTF(RowOp, "Executing microprogram from '%s'\n", filename.c_str());
+    Tick microprogram_entry_at = cmd_at;
 
     if (rank_ref.refreshEvent.scheduled()) {
         rank_ref.deschedule(rank_ref.refreshEvent);
@@ -1665,6 +1666,8 @@ DRAMInterface::executeAmbitMicroprogram(
 
     file.close();
     DPRINTF(RowOp, "Finished microprogram (%d lines processed)\n", line_num);
+    DPRINTF(RowOp, "Microprogram DRAM-busy span: %llu ticks (entry=%llu, exit=%llu)\n",
+            cmd_at - microprogram_entry_at, microprogram_entry_at, cmd_at);
 
     Tick next_refresh = rank_ref.getRefreshDueAt() - tRP;
     if (next_refresh > cmd_at) {
