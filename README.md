@@ -2,11 +2,12 @@
 
 This repository aims to add full support for simulating computing-in-memory using DRAM (CIMD) programs (starting with the Ambit [1] Processing-using-DRAM technology).
 The implementation is heavily based on [MIMDRAM](https://github.com/CMU-SAFARI/MIMDRAM/tree/23495f10950d891a95a0b8a05d0a6a88e92de154/gem5), which used an older gem5 version.
-Compared to MIMDRAM, most notably our simulator implementation adds full support for the entire SIMDRAM [2] instruction set, supports CIMD operand allocation in a reserved huge page pool (following the approach described in SIMDRAM)
-and provides what we call the *cim standard library*. The cim-stdlib includes C++ wrappers around supported CIMD x86 instructions and a custom CIM memory allocator.
+Compared to MIMDRAM, our simulator implementation most notably adds full support for the entire SIMDRAM [2] and PRADA [3] instruction set, supports CIMD operand allocation in a reserved huge page pool (following the approach described in SIMDRAM),
+and provides what we call the *cim standard library*. The cim-stdlib includes C++ wrappers around the supported CIMD x86 instructions and a custom CIM memory allocator.
 
-- [1] Hoon Shin, Rihae Park, and Jae W. Lee. 2025. A Processingusing-Memory Architecture for Commodity DRAM Devices with Enhanced Compatibility and Reliability. In Proceedings of the 43rd IEEE/ACM International Conference on ComputerAided Design (ICCAD ’24), 1–10. https://doi.org/10.1145/ 3676536.3676771
+- [1] Vivek Seshadri, Donghyuk Lee, Thomas Mullins, Hasan Hassan, Amirali Boroumand, Jeremie Kim, Michael A. Kozuch, Onur Mutlu, Phillip B. Gibbons, and Todd C. Mowry. 2017. Ambit: in-memory accelerator for bulk bitwise operations using commodity DRAM technology. In Proceedings of the 50th Annual IEEE/ACM International Symposium on Microarchitecture (MICRO-50 '17). Association for Computing Machinery, New York, NY, USA, 273–287. https://doi.org/10.1145/3123939.3124544
 - [2] Nastaran Hajinazar, Geraldo F. Oliveira, Sven Gregorio, João Dinis Ferreira, Nika Mansouri Ghiasi, Minesh Patel, Mohammed Alser, Saugata Ghose, Juan Gómez-Luna, and Onur Mutlu. 2021. SIMDRAM: a framework for bit-serial SIMD processing using DRAM. In Proceedings of the 26th ACM International Conference on Architectural Support for Programming Languages and Operating Systems (ASPLOS ’21), 329–345. https://doi.org/10.1145/3445814.3446749
+- [3] Hoon Shin, Rihae Park, and Jae W. Lee. 2025. A Processing-using-Memory Architecture for Commodity DRAM Devices with Enhanced Compatibility and Reliability. In Proceedings of the 43rd IEEE/ACM International Conference on Computer-Aided Design (ICCAD ’24), 1–10. https://doi.org/10.1145/3676536.3676771
 
 **Current limitations**: Simulating CIM workloads in the O3 CPU Model is not working reliably (yet).
 
@@ -22,8 +23,8 @@ make test TEST=primitives       # build only CIM primitives
 make test TEST=all              # build all tests
 ```
 
-Then run: `build/X86/gem5.debug --debug-flags=X86 --debug-start=0 --debug-file=/tmp/dprint.log  configs/cim/hello_world_cim.py 2>&1 |  grep -Ev '^(Command|WARN)'`
-(the simulator might put out lots of warnings, we filter them out for now). Make sure to set the appropriate binary (that you build previously into `tests/test-progrs/cim/bin`) inside
+Then run: `build/X86/gem5.debug --debug-flags=X86 --debug-start=0 --debug-file=/tmp/dprint.log configs/cim/hello_world_cim.py 2>&1 | grep -Ev '^(Command|WARN)'`
+(the simulator may emit lots of warnings, so we filter them out for now). Make sure to set the appropriate binary (the one you built previously into `tests/test-progs/cim/bin`) inside
 `configs/cim/cim.py`.
 
 # The gem5 Simulator

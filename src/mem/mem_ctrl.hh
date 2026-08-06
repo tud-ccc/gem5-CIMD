@@ -137,6 +137,11 @@ class MemPacket
     uint32_t src1_row;	// start row of 1st SIMD operand (spans `elem_size` rows in vertical data layout)
     uint32_t src2_row;  // start row of 2nd SIMD operand (spans `elem_size` rows in vertical data layout)
     uint32_t mask_row;  // only for ROW_IFELSE
+    // Rank and bank the source row lives in. Equal to rank/bank for every
+    // in-subarray row-op; ROWCOPY is the one op whose source may sit in a
+    // different bank or rank, and the inter-bank copy timing needs both.
+    uint8_t src_rank;
+    uint8_t src_bank;
     bool is_row_op;
     std::optional<Request::RowOp> row_op;
 
@@ -238,6 +243,7 @@ class MemPacket
           // dram_ctrl.hh#L502)
 		  // `src1_row`&`src2_row` are set later on
           num_elements(0), elem_bitwidth(0), row(_row), src1_row(0), src2_row(0),
+		  mask_row(0), src_rank(_rank), src_bank(_bank),
 		  is_row_op(false), row_op(std::nullopt),
           bankId(bank_id), addr(_addr), size(_size),
           burstHelper(NULL), _qosValue(_pkt->qosValue())
@@ -255,7 +261,9 @@ class MemPacket
           // 23495f10950d891a95a0b8a05d0a6a88e92de154/gem5/src/mem/
           // dram_ctrl.hh#L502)
 		  elem_bitwidth(0), row(_row),
-          src1_row(0), src2_row(0), is_row_op(false), row_op(std::nullopt),
+          src1_row(0), src2_row(0), mask_row(0),
+          src_rank(_rank), src_bank(_bank),
+          is_row_op(false), row_op(std::nullopt),
           bankId(bank_id), addr(_addr), size(_size),
           burstHelper(NULL), _qosValue(_pkt->qosValue())
     { }

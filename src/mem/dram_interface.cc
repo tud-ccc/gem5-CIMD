@@ -404,6 +404,10 @@ DRAMInterface::doBurstAccess(MemPacket* mem_pkt, Tick next_burst_at,
         // Wait for earliest allowed activate
         cmd_at = std::max(cmd_at, bank_ref.actAllowedAt);
         Tick issue_tick = cmd_at; // store tick at which pkt has been issued
+        // Tick the ACT actually went out on, for the trace-replay ops below.
+        // They pace the channel by the activate rather than by the bank's
+        // whole ACT..PRE lifetime, so banks pipeline instead of serialising.
+        Tick act_cmd_at = cmd_at;
 
 		uint64_t size = mem_pkt->num_elements;
 		uint64_t n = mem_pkt->elem_bitwidth;
@@ -445,11 +449,207 @@ DRAMInterface::doBurstAccess(MemPacket* mem_pkt, Tick next_burst_at,
 				}
 				case Request::ROWTRSP_INIT:
 					break;
+
+				// ---- Ambit primitives replayed straight from a trace ----
+				// A trace already carries the expanded AP/AAP schedule, so
+				// these are issued as single commands instead of being
+				// re-expanded from a microprogram file.
+				case Request::ROWAP:
+					act_cmd_at = cmd_at;
+					apBank(rank_ref, bank_ref, cmd_at, mem_pkt->row);
+					cmd_at = bank_ref.actAllowedAt;
+					break;
+
+				case Request::ROWAAP:
+					act_cmd_at = cmd_at;
+					aapBank(rank_ref, bank_ref, cmd_at, mem_pkt->src1_row,
+							mem_pkt->row, true);
+					cmd_at = bank_ref.actAllowedAt;
+					break;
+
+				// ---- Cross-channel row-copy halves ----
+				// Each half occupies its own channel's data bus for one
+				// full row (ACT, tRCD, columns bursts, recovery, PRE).
+				// Delay the ACT until the data bus is about to free up
+				// rather than holding the row open while queued: that keeps
+				// the bank's active window short and fixed, so refresh can
+				// slot in between streams as a real controller would.
+				// Streams in the same channel serialise on the data bus via
+				// rowStreamBusUntil; AAP-style (CA-bus-only) row-ops may
+				// still overlap a stream.
+				case Request::ROW_RD_STREAM:
+				case Request::ROW_WR_STREAM:
+				{
+					const bool is_read_stream =
+						*mem_pkt->row_op == Request::ROW_RD_STREAM;
+					const uint32_t cols_per_row = columnsPerRowBuffer();
+
+					Tick act_at = std::max(cmd_at,
+						rowStreamBusUntil > tRCD_RD ?
+						rowStreamBusUntil - tRCD_RD : 0);
+					// An ACT landing while a precharge or power event is
+					// queued in this rank makes schedulePowerEvent panic;
+					// push it strictly after those.
+					if (rank_ref.prechargeEvent.scheduled())
+						act_at = std::max(act_at,
+								rank_ref.prechargeEvent.when() + 1);
+					if (rank_ref.powerEvent.scheduled())
+						act_at = std::max(act_at,
+								rank_ref.powerEvent.when() + 1);
+
+					// Pace the drain to the *actual* ACT: the tail derives
+					// the next burst time from act_cmd_at, and the event
+					// guards above only see events scheduled so far, so
+					// letting the drain race ahead of a far-future ACT
+					// reintroduces the schedulePowerEvent panic.
+					act_cmd_at = act_at;
+					activateBank(rank_ref, bank_ref, act_at, mem_pkt->row);
+
+					Tick col_at = is_read_stream ? bank_ref.rdAllowedAt
+												 : bank_ref.wrAllowedAt;
+					Tick end_at = col_at + cols_per_row * tBURST;
+					// tRTP before precharge after a read, tWR after a write
+					Tick pre_at = std::max(bank_ref.preAllowedAt,
+						col_at + (cols_per_row - 1) * tBURST +
+						(is_read_stream ? tRTP : tWR));
+					prechargeBank(rank_ref, bank_ref, pre_at);
+
+					rowStreamBusUntil = end_at;
+					cmd_at = end_at;
+
+					DPRINTF(RowOp, "ROW_%s_STREAM rank%d/bank%d/row%d "
+							"col@%llu end@%llu\n",
+							is_read_stream ? "RD" : "WR",
+							mem_pkt->rank, mem_pkt->bank, mem_pkt->row,
+							col_at, end_at);
+					break;
+				}
+
+				case Request::ROWCOPY:
+				{
+					bool same_subarray =
+						mem_pkt->src_rank == mem_pkt->rank &&
+						mem_pkt->src_bank == mem_pkt->bank &&
+						mem_pkt->src1_row / rowsPerSubarray ==
+							mem_pkt->row / rowsPerSubarray;
+
+					if (same_subarray) {
+						// src and dst share sense amplifiers, so a single
+						// AAP (ACT src + ACT dst + PRE) suffices.
+						if (bank_ref.openRow != Bank::NO_ROW)
+							prechargeBank(rank_ref, bank_ref,
+								std::max(bank_ref.preAllowedAt, curTick()));
+						cmd_at = std::max(cmd_at, bank_ref.actAllowedAt);
+						act_cmd_at = cmd_at;
+						aapBank(rank_ref, bank_ref, cmd_at, mem_pkt->src1_row,
+								mem_pkt->row, true);
+						cmd_at = bank_ref.actAllowedAt;
+
+						DPRINTF(RowOp, "ROWCOPY (intra-subarray) "
+								"rank%d/bank%d/row%d -> row%d\n",
+								mem_pkt->rank, mem_pkt->bank,
+								mem_pkt->src1_row, mem_pkt->row);
+					} else {
+						// Inter-bank copy over the data bus:
+						//   ACT src_row; ACT dst_row;
+						//   RD all columns of src -> data onto the bus;
+						//   WR all columns of dst <- data from the bus;
+						//   PRE src; PRE dst.
+						const uint32_t cols_per_row = columnsPerRowBuffer();
+						Rank& src_rank_ref = *ranks[mem_pkt->src_rank];
+						Bank& src_bank_ref =
+							src_rank_ref.banks[mem_pkt->src_bank];
+
+						// Precharge the source bank if it has an open page;
+						// the destination was precharged above.
+						if (src_bank_ref.openRow != Bank::NO_ROW)
+							prechargeBank(src_rank_ref, src_bank_ref,
+								std::max(src_bank_ref.preAllowedAt,
+										 curTick()));
+
+						// ACT src row (cmd_at already respects the
+						// destination bank's actAllowedAt)
+						Tick src_act_at = std::max(cmd_at,
+								src_bank_ref.actAllowedAt);
+						// Same event-collision guard as the streams: an ACT
+						// firing on the same tick as a queued precharge or
+						// power event panics in schedulePowerEvent.
+						if (src_rank_ref.prechargeEvent.scheduled())
+							src_act_at = std::max(src_act_at,
+								src_rank_ref.prechargeEvent.when() + 1);
+						if (src_rank_ref.powerEvent.scheduled())
+							src_act_at = std::max(src_act_at,
+								src_rank_ref.powerEvent.when() + 1);
+						activateBank(src_rank_ref, src_bank_ref, src_act_at,
+								mem_pkt->src1_row);
+
+						// ACT dst row; tRRD is already folded into
+						// bank.actAllowedAt by activateBank()
+						Tick dst_act_at = std::max(src_act_at,
+								bank_ref.actAllowedAt);
+						if (&rank_ref != &src_rank_ref) {
+							if (rank_ref.prechargeEvent.scheduled())
+								dst_act_at = std::max(dst_act_at,
+									rank_ref.prechargeEvent.when() + 1);
+							if (rank_ref.powerEvent.scheduled())
+								dst_act_at = std::max(dst_act_at,
+									rank_ref.powerEvent.when() + 1);
+						}
+						act_cmd_at = dst_act_at;
+						activateBank(rank_ref, bank_ref, dst_act_at,
+								mem_pkt->row);
+
+						// RD phase: one burst per column out of the source
+						Tick rd_col_at = src_bank_ref.rdAllowedAt;
+						Tick rd_end_at = rd_col_at + cols_per_row * tBURST;
+						Tick src_pre_at = std::max(src_bank_ref.preAllowedAt,
+							rd_col_at + (cols_per_row - 1) * tBURST + tRTP);
+						prechargeBank(src_rank_ref, src_bank_ref, src_pre_at);
+
+						// WR phase: same again into the destination, after
+						// the read-to-write bus turnaround
+						Tick wr_col_at = std::max(bank_ref.wrAllowedAt,
+								rd_end_at + tRTW);
+						Tick wr_end_at = wr_col_at + cols_per_row * tBURST;
+						Tick dst_pre_at = std::max(bank_ref.preAllowedAt,
+							wr_col_at + (cols_per_row - 1) * tBURST + tWR);
+						prechargeBank(rank_ref, bank_ref, dst_pre_at);
+
+						// the bus is busy through the last write burst
+						cmd_at = wr_end_at;
+
+						DPRINTF(RowOp, "ROWCOPY (inter-bank) "
+								"rank%d/bank%d/row%d -> rank%d/bank%d/row%d "
+								"rd@%llu wr@%llu\n",
+								mem_pkt->src_rank, mem_pkt->src_bank,
+								mem_pkt->src1_row, mem_pkt->rank,
+								mem_pkt->bank, mem_pkt->row,
+								rd_col_at, wr_col_at);
+					}
+					break;
+				}
+
 				default:
 					assert(false);
 					break;
 			}
 		}
+
+        // The trace-replay ops are paced by the ACT, not by the bank's whole
+        // ACT..PRE cycle: the command bus is only occupied by the activate
+        // itself, so a row-op to a *different* bank can issue one command
+        // window later. Cross-bank pacing (tRRD / tXAW) and same-bank pacing
+        // (tRAS / tRP) already live in bank.actAllowedAt, so this lets banks
+        // pipeline. Kept separate from the microprogram path below so that
+        // existing SIMDRAM workloads keep their current timing.
+        if (Request::is_trace_replay_rowop(*mem_pkt->row_op)) {
+            // tRL is this tree's name for tCL
+            mem_pkt->readyTime = cmd_at + tRL;
+            activeRank = mem_pkt->rank;
+            DPRINTF(RowOp, "Trace-replay row-op paced by ACT@%llu, next "
+                    "burst at %llu\n", act_cmd_at, act_cmd_at + tCK);
+            return std::make_pair(issue_tick, act_cmd_at + tCK);
+        }
 
         // Update times, similar to code below
         mem_pkt->readyTime = cmd_at + tWL;
@@ -728,6 +928,7 @@ DRAMInterface::DRAMInterface(const DRAMInterfaceParams &_p)
       bankGroupsPerRank(_p.bank_groups_per_rank),
       bankGroupArch(_p.bank_groups_per_rank > 0),
 	  rowsPerSubarray(_p.rows_per_subarray), colsPerSubarray(_p.cols_per_subarray), subarraysPerBank(0),
+	  rowStreamBusUntil(0),
       tRL(_p.tCL),
       tWL(_p.tCWL),
       tBURST_MIN(_p.tBURST_MIN),
@@ -942,6 +1143,18 @@ DRAMInterface::decodePacket(const PacketPtr pkt, Addr pkt_addr,
 
 	uint64_t subarray = 0;
 
+    // Only the RaBaMaRoCh mapping decodes the mat/subarray bits, which the
+    // microprogram row-op path needs (it asserts operands share a subarray).
+    // The trace players carry explicit bank/row addresses and never consult
+    // the decoded subarray, so they are fine under the plain mappings too.
+    auto rowop_needs_mat_decode = [&pkt]() {
+        if (!pkt->isRowOp())
+            return false;
+        const Request::RowOpPayload* payload =
+            pkt->getConstPtr<Request::RowOpPayload>();
+        return !Request::is_trace_replay_rowop(payload->op);
+    };
+
     // Get packed address, starting at 0
     Addr addr = getCtrlAddr(pkt_addr);
 
@@ -952,7 +1165,8 @@ DRAMInterface::decodePacket(const PacketPtr pkt, Addr pkt_addr,
     // we have removed the lowest order address bits that denote the
     // position within the column
 	if (addrMapping == enums::RoRaBaChCo || addrMapping == enums::RoRaBaCoCh) {
-		assert(!pkt->isRowOp()); // "Only AddrMapping enums::RoRaBaChCo is supported with RowOps"
+		// Microprogram row-ops need the mat decode (RaBaMaRoCh only)
+		assert(!rowop_needs_mat_decode());
 		// Channel bits: 0
 		// gem5 seems to model each channel behind a separate Memory Controller (so basically /1)
 		// - see https://github.com/orgs/gem5/discussions/2747#discussioncomment-14971006
@@ -974,7 +1188,8 @@ DRAMInterface::decodePacket(const PacketPtr pkt, Addr pkt_addr,
         // lastly, get the row bits, no need to remove them from addr
         row = addr % rowsPerBank;
     } else if (addrMapping == enums::RoCoRaBaCh) {
-		assert(!pkt->isRowOp()); // "Only AddrMapping enums::RoRaBaChCo is supported with RowOps"
+		// Microprogram row-ops need the mat decode (RaBaMaRoCh only)
+		assert(!rowop_needs_mat_decode());
 
         // with emerging technologies, could have small page size with
         // interleaving granularity greater than row buffer

@@ -388,6 +388,20 @@ class Request : public Extensible<Request>
 		ROWBITCOUNT,
 		ROWMULT,
 		ROWDIV,
+        // Ambit primitives issued directly rather than expanded from a
+        // microprogram. The trace players emit these to replay a
+        // precomputed schedule of raw AP/AAP commands.
+        ROWAP,   // triple-row activate + precharge (MAJ3)
+        ROWAAP,  // ACT src, ACT dst, PRE (copy through the sense amps)
+        // Inter-bank row copy: src1 -> dest, which may sit in a different
+        // bank or rank.
+        ROWCOPY,
+        // Cross-channel row-copy halves: each involved channel streams the
+        // full row over its own data bus once (ACT -> tRCD -> C bursts ->
+        // tRTP/tWR -> PRE). The two halves live in different channels and
+        // pipeline like a host-buffered DMA.
+        ROW_RD_STREAM, // source-channel half: stream the row out (read)
+        ROW_WR_STREAM, // destination-channel half: stream the row in (write)
     };
 
     struct RowOpPayload
@@ -693,7 +707,41 @@ class Request : public Extensible<Request>
 
 
 	static bool is_unary_rowop(Request::RowOp op) {
-		return op == Request::ROWNOT || op == Request::ROWABS || op == Request::ROWTRSP_INIT;
+		return op == Request::ROWNOT || op == Request::ROWABS ||
+			op == Request::ROWTRSP_INIT ||
+			// Ambit primitives and row copies read at most one source row
+			op == Request::ROWAP || op == Request::ROWAAP ||
+			op == Request::ROWCOPY ||
+			op == Request::ROW_RD_STREAM || op == Request::ROW_WR_STREAM;
+	}
+
+	/**
+	 * Ops that carry no source row at all: the destination row is the only
+	 * operand, so `src1` is not decoded and no same-bank check applies.
+	 */
+	static bool is_nullary_rowop(Request::RowOp op) {
+		return op == Request::ROWAP || op == Request::ROW_RD_STREAM ||
+			op == Request::ROW_WR_STREAM;
+	}
+
+	/**
+	 * Ops whose source row may live in a different bank or rank than the
+	 * destination. Everything else operates within one subarray, where the
+	 * source and destination share sense amplifiers.
+	 */
+	static bool rowop_crosses_banks(Request::RowOp op) {
+		return op == Request::ROWCOPY;
+	}
+
+	/**
+	 * Ops that replay a precomputed schedule (the trace players) rather
+	 * than expanding a microprogram. They are issued as single DRAM
+	 * commands and paced by the activate.
+	 */
+	static bool is_trace_replay_rowop(Request::RowOp op) {
+		return op == Request::ROWAP || op == Request::ROWAAP ||
+			op == Request::ROWCOPY ||
+			op == Request::ROW_RD_STREAM || op == Request::ROW_WR_STREAM;
 	}
 
     /**

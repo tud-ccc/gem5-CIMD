@@ -522,6 +522,20 @@ class DRAMInterface : public MemInterface
 	uint32_t subarraysPerBank;
 
     /**
+     * Number of column bursts needed to move one whole row buffer over the
+     * data bus. Used by the row-copy and row-stream ops, which transfer a
+     * full row rather than a single burst.
+     */
+    uint32_t columnsPerRowBuffer() const { return rowBufferSize / burstSize; }
+
+    /**
+     * When the data bus of this channel is free again after a row stream.
+     * Streams in the same channel serialise on it; CA-bus-only row-ops
+     * (AP / AAP) may still overlap one.
+     */
+    Tick rowStreamBusUntil;
+
+    /**
      * DRAM specific timing requirements
      */
     const Tick tRL;

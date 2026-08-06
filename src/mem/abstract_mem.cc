@@ -479,6 +479,23 @@ AbstractMemory::access(PacketPtr pkt)
 			case Request::ROWTRSP_INIT:
 				// TODO: register in Object Tracker
 				break;
+			// Row copies move the destination row's worth of bytes. The
+			// trace players issue these with size=n=0 (timing-only replay),
+			// which makes num_bytes 0 and the copy a no-op.
+			case Request::ROWCOPY:
+			case Request::ROWAAP:
+				for (int i = 0; i < num_bytes; i += sizeof(uint64_t)) {
+					*dest++ = *src1++;
+				}
+				break;
+			// ROWAP is a triple-row activation whose result lives in the
+			// Ambit control rows, and the stream halves only move a row
+			// across the data bus. Neither has functional state to update
+			// here; both exist to be charged for their DRAM timing.
+			case Request::ROWAP:
+			case Request::ROW_RD_STREAM:
+			case Request::ROW_WR_STREAM:
+				break;
 			default:
 				perform_rowop(dest, src1, src2, mask, num_elements, elem_bitwidth, addrs->op);
 				break;

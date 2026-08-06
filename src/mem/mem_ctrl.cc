@@ -330,8 +330,13 @@ MemCtrl::addToWriteQueue(PacketPtr pkt, unsigned int pkt_count,
         mem_pkt->row_op = addrs->op;
 
         // Make sure `dest`&`src1` address the same bank&rank
-        // Only care about dram_pkt1 if the operation is not in place
-		if (addrs->op != Request::ROWTRSP_INIT) {
+        // Only care about dram_pkt1 if the operation is not in place.
+        // ROWCOPY is exempt: an inter-bank copy moves a row between banks
+        // (or ranks) over the data bus, and the nullary ops have no source
+        // row to check at all.
+		if (addrs->op != Request::ROWTRSP_INIT &&
+			!Request::is_nullary_rowop(addrs->op) &&
+			!Request::rowop_crosses_banks(addrs->op)) {
 			assert(mem_pkt->rank == mem_pkt1->rank);
 			assert(mem_pkt->bank == mem_pkt1->bank);
 			assert(mem_pkt->subarray== mem_pkt1->subarray);
@@ -346,6 +351,10 @@ MemCtrl::addToWriteQueue(PacketPtr pkt, unsigned int pkt_count,
         mem_pkt->src1_row = mem_pkt1->row;
         mem_pkt->src2_row = mem_pkt2->row;
         mem_pkt->mask_row = mem_pkt3->row;
+        // Where the source row lives. Identical to the destination for
+        // in-subarray ops; ROWCOPY is the case where it genuinely differs.
+        mem_pkt->src_rank = mem_pkt1->rank;
+        mem_pkt->src_bank = mem_pkt1->bank;
 		mem_pkt->num_elements = addrs->size;
 		mem_pkt->elem_bitwidth = addrs->n;
         delete mem_pkt1;
@@ -365,14 +374,18 @@ MemCtrl::addToWriteQueue(PacketPtr pkt, unsigned int pkt_count,
         // Add to write queue, and set rowop counter to signal that we must
         // flush the write queue
 
+        // Check capacity before queueing, as the plain write path does:
+        // recvTimingReq admits a packet while totalWriteQueueSize + 1 <=
+        // writeBufferSize, so asserting after the push trips whenever the
+        // queue fills exactly.
+        assert(totalWriteQueueSize < writeBufferSize);
+        stats.wrQLenPdf[totalWriteQueueSize]++;
+
         // log packet (TODO: log as RowOp)
         logRequest(MemCtrl::WRITE, pkt->requestorId(),
                    pkt->qosValue(), mem_pkt->addr, 1);
         writeQueue[mem_pkt->qosValue()].push_back(mem_pkt);
 
-
-        assert(totalWriteQueueSize < writeBufferSize);
-        stats.wrQLenPdf[totalWriteQueueSize]++;
         mem_intr->writeQueueSize++;
 
         // Update stats
@@ -1217,8 +1230,11 @@ MemCtrl::processNextReqEvent(MemInterface* mem_intr,
                     mem_pkt->qosValue(), mem_pkt->getAddr(), 1,
                     mem_pkt->readyTime - mem_pkt->entryTime);
 
+        // A queue filled exactly to capacity is legal: recvTimingReq admits
+        // packets while size + needed <= writeBufferSize, so the bound here
+        // has to be inclusive.
         assert(mem_intr->writeQueueSize > 0 &&
-            mem_intr->writeQueueSize < mem_intr->writeBufferSize);
+            mem_intr->writeQueueSize <= mem_intr->writeBufferSize);
         mem_intr->writeQueueSize--;
 
 
