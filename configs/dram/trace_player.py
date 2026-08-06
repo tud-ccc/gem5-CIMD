@@ -221,9 +221,9 @@ for c in range(num_channels):
     if args.addr_map:
         iface.addr_mapping = args.addr_map
     iface.range = AddrRange(base_addr + c * channel_size, size=channel_size)
-    ctrl = MemCtrl(dram=iface)
     if args.write_buffer_size > 0:
-        ctrl.write_buffer_size = args.write_buffer_size
+        iface.write_buffer_size = args.write_buffer_size
+    ctrl = MemCtrl(dram=iface)
     ctrls.append(ctrl)
 
 system.mem_ctrls = ctrls

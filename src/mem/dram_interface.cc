@@ -1515,6 +1515,23 @@ DRAMInterface::aapBank(Rank& rank_ref, Bank& bank_ref, Tick act_tick,
         bank_ref.bank, rank_ref.rank, act_tick,
         ranks[rank_ref.rank]->numBanksActive);
 
+    // Record the activation with DRAMPower. This function does the bank
+    // bookkeeping inline rather than calling activateBank(), so without
+    // this the row-op would contribute a PRE with no matching ACT: its
+    // activation energy would go uncounted, and DRAMPower would drop the
+    // precharge and warn ("Bank is already precharged!").
+    //
+    // One ACT, not two. An AAP physically activates both rows, but the
+    // second lands while the first is still open -- that overlap is the
+    // whole mechanism -- and DRAMPower has no way to express activating an
+    // already-active bank (handleAct() ignores it and warns). So the
+    // second, overlapped activation stays uncharged.
+    rank_ref.cmdList.push_back(Command(MemCommand::ACT, bank_ref.bank,
+                               act_tick));
+
+    DPRINTF(DRAMPower, "%llu,ACT,%d,%d\n", divCeil(act_tick, tCK) -
+            timeStampOffset, bank_ref.bank, rank_ref.rank);
+
     // The next access has to respect tRAS plus a bit for this bank
     if (act_overlapped) {
         bank_ref.preAllowedAt = act_tick + tRAS + tWLOV;
