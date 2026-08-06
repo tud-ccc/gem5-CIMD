@@ -1274,6 +1274,169 @@ class HBM_2000_4H_1x64(DRAMInterface):
     two_cycle_activate = True
 
 
+# A single HBM2 x64 pseudo-channel, timed from the ETHZ-DYNAMO OptiPIM
+# HBM2.cpp device model at 2000 MT/s (tCK = 1ns). Ported from the older
+# MIMDRAM gem5 tree, where these timings were cross-validated against
+# Ramulator's HBM2/HBM3 models (see ROWOP_LATENCY_GEM5_VS_RAMULATOR.md).
+#
+# Distinct from HBM_2000_4H_1x64 above, which uses the upstream gem5
+# HBM2 timings; these follow OptiPIM so that RowOp latency numbers are
+# comparable with Ramulator.
+#
+# Geometry per JESD235B: 4 bank groups x 2 banks/BG = 8 banks per
+# pseudo-channel, 1 kB row buffer.
+#
+# Three density variants differ only in capacity and tRFC:
+#   HBM2_2Gb_1x64  2 Gb per stack die -> 128 MiB per PC  tRFC=160ns
+#   HBM2_4Gb_1x64  4 Gb per stack die -> 256 MiB per PC  tRFC=260ns
+#   HBM2_8Gb_1x64  8 Gb per stack die -> 512 MiB per PC  tRFC=350ns
+class HBM2_2Gb_1x64(DRAMInterface):
+    # 2 Gb die split across 2 pseudo-channels
+    device_size = "128MiB"
+    device_bus_width = 64
+    burst_length = 4
+
+    # 1 kB per pseudo-channel (JESD235B)
+    device_rowbuffer_size = "1KiB"
+
+    devices_per_rank = 1
+    ranks_per_channel = 1
+    bank_groups_per_rank = 4
+
+    # 4 BG x 2 banks/BG (JESD235B HBM2)
+    banks_per_rank = 8
+
+    # 1000 MHz core, 2000 MT/s DDR
+    tCK = "1ns"
+
+    # BL4 DDR -> 4 transfers x 0.5ns
+    tBURST = "2ns"
+
+    # core timing (OptiPIM cycle counts x tCK = 1ns)
+    tCL = "7ns"
+    tRCD = "7ns"
+    tRP = "7ns"
+    tRAS = "17ns"
+    tWR = "8ns"
+    tRTP = "2ns"
+
+    # bus turnaround
+    tWTR = "3ns"
+    tRTW = "3ns"
+
+    # rank-to-rank; single rank per PC, kept for completeness
+    tCS = "1ns"
+
+    # CAS-to-CAS within a bank group.
+    # gem5 requires tCCD_L > tBURST; JEDEC HBM2 min is 4 tCK, but the
+    # OptiPIM model's nCCDL=2 equals tBURST, so it is bumped to 3ns to
+    # satisfy the constraint (same workaround as the older gem5 tree).
+    tCCD_L = "3ns"
+
+    # ACT-to-ACT, different and same bank group
+    tRRD = "2ns"
+    tRRD_L = "3ns"
+
+    # four-activation window
+    tXAW = "15ns"
+    activation_limit = 4
+
+    # Overlapped-activate word-line delay, used by the AAP/AAAP RowOp
+    # timing paths. tWLOV has no default in this tree, so it must be set
+    # explicitly. 5ns matches the default in the older MIMDRAM gem5,
+    # which the HBM2/HBM3 classes there never override.
+    tWLOV = "5ns"
+
+    # refresh, 2 Gb die
+    tRFC = "160ns"
+    tREFI = "3900ns"
+
+    # HBM has no power-down mode; exit timings are zero and self-refresh
+    # exit tracks tRFC.
+    tXP = "0ns"
+    tXPDLL = "0ns"
+    tXS = "160ns"
+
+    addr_mapping = "RoRaBaChCo"
+    page_policy = "close"
+
+    # HBM2 IDD values are not published; these are Samsung 8 Gb HBM2
+    # estimates scaled for a 2 Gb die, used as a placeholder.
+    VDD = "1.2V"
+    IDD0 = "60mA"
+    IDD02 = "0mA"
+    IDD2N = "26mA"
+    IDD2N2 = "0mA"
+    IDD3N = "34mA"
+    IDD3N2 = "0mA"
+    IDD4W = "123mA"
+    IDD4W2 = "0mA"
+    IDD4R = "123mA"
+    IDD4R2 = "0mA"
+    IDD5 = "215mA"
+    IDD52 = "0mA"
+    IDD6 = "12mA"
+    IDD62 = "0mA"
+    IDD2P0 = "6mA"
+    IDD2P02 = "0mA"
+    IDD2P1 = "12mA"
+    IDD2P12 = "0mA"
+    IDD3P0 = "8mA"
+    IDD3P02 = "0mA"
+    IDD3P1 = "20mA"
+    IDD3P12 = "0mA"
+
+
+# HBM2 pseudo-channel, 4 Gb die (256 MiB per pseudo-channel)
+class HBM2_4Gb_1x64(HBM2_2Gb_1x64):
+    device_size = "256MiB"
+    tRFC = "260ns"
+    tXS = "260ns"
+
+
+# HBM2 pseudo-channel, 8 Gb die (512 MiB per pseudo-channel)
+class HBM2_8Gb_1x64(HBM2_2Gb_1x64):
+    device_size = "512MiB"
+    tRFC = "350ns"
+    tXS = "350ns"
+
+
+# A single HBM3 x64 pseudo-channel, from the ETHZ-DYNAMO OptiPIM
+# HBM3.cpp device model.
+#
+# The architectural change vs HBM2 is that banks per bank group double:
+#   HBM2: 4 BG x 2 banks/BG =  8 banks per PC (JESD235B)
+#   HBM3: 4 BG x 4 banks/BG = 16 banks per PC (JESD238)
+# For the same die capacity each bank therefore has half the rows.
+# Timings are identical to HBM2 (acknowledged as a TODO upstream in
+# OptiPIM).
+#
+# RFM (Refresh Management) commands RFMab/RFMsb, new in HBM3 as a
+# rowhammer mitigation, are not modeled here.
+#
+#   HBM3_2Gb_1x64  2 Gb die -> 128 MiB per PC  tRFC=160ns
+#   HBM3_4Gb_1x64  4 Gb die -> 256 MiB per PC  tRFC=260ns
+#   HBM3_8Gb_1x64  8 Gb die -> 512 MiB per PC  tRFC=350ns
+class HBM3_2Gb_1x64(HBM2_2Gb_1x64):
+    # 4 BG x 4 banks/BG (JESD238 HBM3); device_size stays 128 MiB, so
+    # rows/bank = 128MiB / (16 * 1KiB) = 8192
+    banks_per_rank = 16
+
+
+# HBM3 pseudo-channel, 4 Gb die (256 MiB per pseudo-channel)
+class HBM3_4Gb_1x64(HBM3_2Gb_1x64):
+    device_size = "256MiB"
+    tRFC = "260ns"
+    tXS = "260ns"
+
+
+# HBM3 pseudo-channel, 8 Gb die (512 MiB per pseudo-channel)
+class HBM3_8Gb_1x64(HBM3_2Gb_1x64):
+    device_size = "512MiB"
+    tRFC = "350ns"
+    tXS = "350ns"
+
+
 # A single DDR5-4400 32bit channel (4x8 configuration)
 # A DDR5 DIMM is made up of two (32 bit) channels.
 # Following configuration is modeling only a single 32bit channel.
