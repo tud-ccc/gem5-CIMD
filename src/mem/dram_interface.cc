@@ -467,6 +467,34 @@ DRAMInterface::doBurstAccess(MemPacket* mem_pkt, Tick next_burst_at,
 					cmd_at = bank_ref.actAllowedAt;
 					break;
 
+				// ---- Multi-activate variants ----
+				// No ISA encoding for these; a trace player is the only way
+				// to reach them.
+				case Request::ROWANAP:
+					act_cmd_at = cmd_at;
+					anapBank(rank_ref, bank_ref, cmd_at, mem_pkt->src1_row,
+							 mem_pkt->row);
+					cmd_at = bank_ref.actAllowedAt;
+					break;
+
+				case Request::ROWAAAP:
+					act_cmd_at = cmd_at;
+					aaapBank(rank_ref, bank_ref, cmd_at, mem_pkt->src1_row,
+							 mem_pkt->src2_row, mem_pkt->row);
+					cmd_at = bank_ref.actAllowedAt;
+					break;
+
+				case Request::ROWAAAAAP:
+					act_cmd_at = cmd_at;
+					// The payload carries three distinct rows; the two
+					// remaining activates repeat the destination, matching
+					// the call in the older tree.
+					aaaaapBank(rank_ref, bank_ref, cmd_at, mem_pkt->src1_row,
+							   mem_pkt->src2_row, mem_pkt->row, mem_pkt->row,
+							   mem_pkt->row);
+					cmd_at = bank_ref.actAllowedAt;
+					break;
+
 				// ---- Cross-channel row-copy halves ----
 				// Each half occupies its own channel's data bus for one
 				// full row (ACT, tRCD, columns bursts, recovery, PRE).
@@ -938,7 +966,7 @@ DRAMInterface::DRAMInterface(const DRAMInterfaceParams &_p)
       tRAS(_p.tRAS), tWR(_p.tWR), tRTP(_p.tRTP), tRFC(_p.tRFC),
       tREFI(_p.tREFI), tRRD(_p.tRRD), tRRD_L(_p.tRRD_L), tPPD(_p.tPPD),
       tAAD(_p.tAAD), tXAW(_p.tXAW),
-      tXP(_p.tXP), tXS(_p.tXS), tWLOV(_p.tWLOV),
+      tXP(_p.tXP), tXS(_p.tXS), tWLOV(_p.tWLOV), tNOT(_p.tNOT),
       clkResyncDelay(_p.tBURST_MAX),
       dataClockSync(_p.data_clock_sync),
       burstInterleave(tBURST != tBURST_MIN),
@@ -1575,6 +1603,124 @@ DRAMInterface::aapBank(Rank& rank_ref, Bank& bank_ref, Tick act_tick,
         reschedule(rank_ref.activateEvent, act_tick);
 
 	// end with PRECHARGE
+    prechargeBank(rank_ref, bank_ref, bank_ref.preAllowedAt);
+}
+
+// ---------------------------------------------------------------------------
+// Multi-activate Ambit variants.
+//
+// Ported from the older MIMDRAM gem5 tree (dram_ctrl.cc). These are not
+// reachable from the ISA -- no decoder entry, no microop -- and exist so a
+// trace player can replay a precomputed schedule that uses them.
+//
+// All three share the same shape as aapBank(): open the bank, set
+// preAllowedAt from the sequence's own timing, charge only the FIRST
+// activate against tRRD / tXAW (the rest overlap inside the sequence), then
+// close with a single precharge.
+// ---------------------------------------------------------------------------
+
+/**
+ * Bank/rank bookkeeping common to the multi-activate sequences: mark the
+ * bank open, count the activate, pace other banks by tRRD / tXAW off the
+ * first activate, hand the ACT to DRAMPower, and make sure the rank moves
+ * to the active power state.
+ */
+void
+DRAMInterface::beginMultiActivate(Rank& rank_ref, Bank& bank_ref,
+        Tick act_tick)
+{
+    assert(bank_ref.openRow == Bank::NO_ROW);
+    bank_ref.openRow = Bank::DOUBLE_ROW;
+    bank_ref.bytesAccessed = 0;
+    bank_ref.rowAccesses = 0;
+
+    ++rank_ref.numBanksActive;
+    assert(rank_ref.numBanksActive <= banksPerRank);
+
+    // Only the first ACT of the sequence counts against tRRD.
+    for (int i = 0; i < banksPerRank; i++) {
+        if (bankGroupArch && (bank_ref.bankgr == rank_ref.banks[i].bankgr)) {
+            rank_ref.banks[i].actAllowedAt = std::max(act_tick + tRRD_L,
+                                            rank_ref.banks[i].actAllowedAt);
+        } else {
+            rank_ref.banks[i].actAllowedAt = std::max(act_tick + tRRD,
+                                            rank_ref.banks[i].actAllowedAt);
+        }
+    }
+
+    // ... and only the first ACT against the four-activate window.
+    if (!rank_ref.actTicks.empty()) {
+        rank_ref.actTicks.pop_back();
+        rank_ref.actTicks.push_front(act_tick);
+
+        Tick new_limit = rank_ref.actTicks.back() + tXAW;
+        if (rank_ref.actTicks.back() && act_tick < new_limit) {
+            for (int j = 0; j < banksPerRank; j++) {
+                rank_ref.banks[j].actAllowedAt =
+                    std::max(new_limit, rank_ref.banks[j].actAllowedAt);
+            }
+        }
+    }
+
+    // Same reason as in aapBank(): this path does the activate bookkeeping
+    // inline instead of calling activateBank(), so the ACT has to be handed
+    // to DRAMPower here or the trailing PRE would have no matching ACT.
+    // Only one ACT is recorded -- the later ones land while the bank is
+    // already open, which DRAMPower cannot represent.
+    rank_ref.cmdList.push_back(Command(MemCommand::ACT, bank_ref.bank,
+                               act_tick));
+
+    DPRINTF(DRAMPower, "%llu,ACT,%d,%d\n", divCeil(act_tick, tCK) -
+            timeStampOffset, bank_ref.bank, rank_ref.rank);
+
+    // transition to the active power state at the point of the activate
+    if (!rank_ref.activateEvent.scheduled())
+        schedule(rank_ref.activateEvent, act_tick);
+    else if (rank_ref.activateEvent.when() > act_tick)
+        reschedule(rank_ref.activateEvent, act_tick);
+}
+
+void
+DRAMInterface::anapBank(Rank& rank_ref, Bank& bank_ref, Tick act_tick,
+        uint32_t row1, uint32_t row2)
+{
+    DPRINTF(RowOp, "Activate-NOT-Activate-Precharge rows %d,%d at tick %d\n",
+            row1, row2, act_tick);
+
+    // Sequence: ACT1 -> wait tRCD -> NOT (tNOT) -> ACT2 -> wait tRAS -> PRE
+    beginMultiActivate(rank_ref, bank_ref, act_tick);
+    bank_ref.preAllowedAt = act_tick + tRCD_RD + tNOT + tRAS;
+
+    prechargeBank(rank_ref, bank_ref, bank_ref.preAllowedAt);
+}
+
+void
+DRAMInterface::aaapBank(Rank& rank_ref, Bank& bank_ref, Tick act_tick,
+        uint32_t row1, uint32_t row2, uint32_t row3)
+{
+    DPRINTF(RowOp, "Activatex3-Precharge rows %d,%d,%d at tick %d\n",
+            row1, row2, row3, act_tick);
+
+    // Three ACTs at tWLOV intervals; PRE after tRAS measured from the first
+    // ACT plus the two inter-ACT delays.
+    beginMultiActivate(rank_ref, bank_ref, act_tick);
+    bank_ref.preAllowedAt = act_tick + tRAS + 2 * tWLOV;
+
+    prechargeBank(rank_ref, bank_ref, bank_ref.preAllowedAt);
+}
+
+void
+DRAMInterface::aaaaapBank(Rank& rank_ref, Bank& bank_ref, Tick act_tick,
+        uint32_t row1, uint32_t row2, uint32_t row3, uint32_t row4,
+        uint32_t row5)
+{
+    DPRINTF(RowOp, "Activatex5-Precharge rows %d,%d,%d,%d,%d at tick %d\n",
+            row1, row2, row3, row4, row5, act_tick);
+
+    // Five ACTs at tWLOV intervals; PRE after tRAS + 4*tWLOV.
+    beginMultiActivate(rank_ref, bank_ref, act_tick);
+    bank_ref.preAllowedAt = act_tick + tRAS + 4 * tWLOV;
+
     prechargeBank(rank_ref, bank_ref, bank_ref.preAllowedAt);
 }
 

@@ -563,6 +563,8 @@ class DRAMInterface : public MemInterface
     // 23495f10950d891a95a0b8a05d0a6a88e92de154/gem5/src/mem/
     // dram_ctrl.hh#L782)
     const Tick tWLOV;
+    /** Sense-amplifier inversion latency, used by ROWANAP. */
+    const Tick tNOT;
     const Tick clkResyncDelay;
     const bool dataClockSync;
     const bool burstInterleave;
@@ -726,6 +728,46 @@ class DRAMInterface : public MemInterface
      */
     void aapBank(Rank& rank_ref, Bank& bank_ref, Tick act_tick, uint32_t row1,
         uint32_t row2, bool act_overlapped);
+
+    /**
+     * Bank/rank bookkeeping shared by the multi-activate sequences below:
+     * open the bank, pace other banks by tRRD / tXAW off the first
+     * activate, record the ACT with DRAMPower, and enter the active power
+     * state. Callers set bank.preAllowedAt for their own sequence and then
+     * call prechargeBank().
+     */
+    void beginMultiActivate(Rank& rank_ref, Bank& bank_ref, Tick act_tick);
+
+    /**
+     * ACT + NOT + ACT + PRE. The inversion happens in the sense amplifiers
+     * tNOT after the first activate has completed (tRCD), and the second
+     * activate writes the inverted value back.
+     *
+     * Reachable only from a trace player: there is no ISA encoding for it.
+     */
+    void anapBank(Rank& rank_ref, Bank& bank_ref, Tick act_tick,
+        uint32_t row1, uint32_t row2);
+
+    /**
+     * Three activates at tWLOV intervals followed by a precharge, i.e. a
+     * majority operation across three simultaneously activated rows. Only
+     * the first activate is charged against tRRD / tXAW.
+     *
+     * Reachable only from a trace player: there is no ISA encoding for it.
+     */
+    void aaapBank(Rank& rank_ref, Bank& bank_ref, Tick act_tick,
+        uint32_t row1, uint32_t row2, uint32_t row3);
+
+    /**
+     * Five activates at tWLOV intervals followed by a precharge (majority
+     * across five rows). Only the first activate is charged against
+     * tRRD / tXAW.
+     *
+     * Reachable only from a trace player: there is no ISA encoding for it.
+     */
+    void aaaaapBank(Rank& rank_ref, Bank& bank_ref, Tick act_tick,
+        uint32_t row1, uint32_t row2, uint32_t row3, uint32_t row4,
+        uint32_t row5);
 
     /**
      * Execute an AMBIT microprogram by reading the appropriate text file

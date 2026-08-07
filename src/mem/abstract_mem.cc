@@ -495,6 +495,12 @@ AbstractMemory::access(PacketPtr pkt)
 			case Request::ROWAP:
 			case Request::ROW_RD_STREAM:
 			case Request::ROW_WR_STREAM:
+			// The multi-activate variants resolve in the sense amplifiers
+			// across several simultaneously open rows. They are modelled for
+			// their DRAM timing only, so there is no functional update here.
+			case Request::ROWANAP:
+			case Request::ROWAAAP:
+			case Request::ROWAAAAAP:
 				break;
 			default:
 				perform_rowop(dest, src1, src2, mask, num_elements, elem_bitwidth, addrs->op);

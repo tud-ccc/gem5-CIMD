@@ -393,6 +393,11 @@ class Request : public Extensible<Request>
         // precomputed schedule of raw AP/AAP commands.
         ROWAP,   // triple-row activate + precharge (MAJ3)
         ROWAAP,  // ACT src, ACT dst, PRE (copy through the sense amps)
+        // Multi-activate Ambit variants. Not reachable from the ISA: these
+        // exist for trace players that replay a precomputed schedule.
+        ROWANAP,    // ACT, NOT (tNOT after tRCD), ACT, PRE
+        ROWAAAP,    // 3 ACTs at tWLOV intervals, PRE after tRAS + 2*tWLOV
+        ROWAAAAAP,  // 5 ACTs at tWLOV intervals, PRE after tRAS + 4*tWLOV
         // Inter-bank row copy: src1 -> dest, which may sit in a different
         // bank or rank.
         ROWCOPY,
@@ -711,7 +716,7 @@ class Request : public Extensible<Request>
 			op == Request::ROWTRSP_INIT ||
 			// Ambit primitives and row copies read at most one source row
 			op == Request::ROWAP || op == Request::ROWAAP ||
-			op == Request::ROWCOPY ||
+			op == Request::ROWANAP || op == Request::ROWCOPY ||
 			op == Request::ROW_RD_STREAM || op == Request::ROW_WR_STREAM;
 	}
 
@@ -740,7 +745,8 @@ class Request : public Extensible<Request>
 	 */
 	static bool is_trace_replay_rowop(Request::RowOp op) {
 		return op == Request::ROWAP || op == Request::ROWAAP ||
-			op == Request::ROWCOPY ||
+			op == Request::ROWANAP || op == Request::ROWAAAP ||
+			op == Request::ROWAAAAAP || op == Request::ROWCOPY ||
 			op == Request::ROW_RD_STREAM || op == Request::ROW_WR_STREAM;
 	}
 

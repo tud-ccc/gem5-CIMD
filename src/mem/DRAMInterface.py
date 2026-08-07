@@ -105,6 +105,11 @@ class DRAMInterface(MemInterface):
     # time between two activates in overlapped AAP, taken from [MIMDRAM](https://github.com/CMU-SAFARI/MIMDRAM/blob/23495f10950d891a95a0b8a05d0a6a88e92de154/gem5/src/mem/DRAMCtrl.py#L231)
     tWLOV = Param.Latency("Word-line delay (overlapped activate)")
 
+    # Sense-amplifier inversion latency, used by the ROWANAP timing path
+    # (ACT -> tRCD -> NOT -> ACT -> tRAS -> PRE). Given a default so that
+    # every DRAM class stays instantiable; DDR3/DDR4 override it below.
+    tNOT = Param.Latency("15ns", "Sense-amplifier NOT (inversion) latency")
+
     # minimum time between a precharge and subsequent activate
     tRP = Param.Latency("Row precharge time")
 
@@ -343,6 +348,7 @@ class DDR3_1600_8x8(DRAMInterface):
     # see [MIMDRAM](https://github.com/CMU-SAFARI/MIMDRAM/blob/
     # 23495f10950d891a95a0b8a05d0a6a88e92de154/gem5/src/mem/DRAMCtrl.py#L375
     tWLOV = "4ns"
+    tNOT = "35ns"
 
     # Default same rank rd-to-wr bus turnaround to 2 CK, @800 MHz = 2.5 ns
     tRTW = "2.5ns"
@@ -611,6 +617,7 @@ class DDR4_2400_16x4(DRAMInterface):
     # see [MIMDRAM](https://github.com/CMU-SAFARI/MIMDRAM/blob/
     # 23495f10950d891a95a0b8a05d0a6a88e92de154/gem5/src/mem/DRAMCtrl.py#L588)
     tWLOV = "4ns"
+    tNOT = "35ns"
 
     # Current values from datasheet
     IDD0 = "43mA"
