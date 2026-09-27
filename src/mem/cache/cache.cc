@@ -211,7 +211,10 @@ Cache::rowOpOperandBlocks(PacketPtr pkt)
     // in AbstractMemory::perform_rowop().
     const auto *addrs = pkt->getConstPtr<Request::RowOpPayload>();
     const Addr bytes = divCeil(addrs->size * addrs->n, 64) * 8;
-    std::vector<Addr> operands{addrs->dest, addrs->src1};
+    std::vector<Addr> operands{addrs->dest};
+    if (Request::rowop_has_src1(addrs->op)) {
+        operands.push_back(addrs->src1);
+    }
     if (!Request::is_unary_rowop(addrs->op)) {
         operands.push_back(addrs->src2);
     }

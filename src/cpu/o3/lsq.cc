@@ -780,7 +780,9 @@ translateRowOpOperands(const DynInstPtr &inst, uint8_t *data)
         addr = req->getPaddr();
     };
     translate(payload->dest, "dst");
-    translate(payload->src1, "src1");
+    if (Request::rowop_has_src1(payload->op)) {
+        translate(payload->src1, "src1");
+    }
     if (!Request::is_unary_rowop(payload->op)) {
         translate(payload->src2, "src2");
     }

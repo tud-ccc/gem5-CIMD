@@ -696,6 +696,11 @@ class Request : public Extensible<Request>
 		return op == Request::ROWNOT || op == Request::ROWABS || op == Request::ROWTRSP_INIT;
 	}
 
+	/** ROWTRSP_INIT only has a destination; its src1 field is not set. */
+	static bool rowop_has_src1(Request::RowOp op) {
+		return op != Request::ROWTRSP_INIT;
+	}
+
     /**
      * @brief Sets row-operands `req_dest`,`req_src1`,`req_src2` based
      * on executed Row-Operation (and supplied addresses)
@@ -712,8 +717,12 @@ class Request : public Extensible<Request>
         req_dest = std::make_shared<Request>(*this);
         req_dest->_vaddr = addrs->dest;
 
-		req_src1 = std::make_shared<Request>(*this);
-		req_src1->_vaddr = addrs->src1;
+		if (rowop_has_src1(addrs->op)) {
+			req_src1 = std::make_shared<Request>(*this);
+			req_src1->_vaddr = addrs->src1;
+		} else {
+			req_src1 = NULL;
+		}
 
         if (is_unary_rowop(addrs->op)) {
             // NOT, AAP and AP operations have no third operand
