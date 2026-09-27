@@ -19,6 +19,14 @@ def addOptions(parser):
         default="",
         help="Command to execute (use quotes for args)",
     )
+    parser.add_option(
+        "--cpu",
+        type="choice",
+        choices=["timing", "o3"],
+        default="timing",
+        help="CPU model: 'timing' (X86TimingSimpleCPU, in-order) or "
+        "'o3' (X86O3CPU, out-of-order). PIM RowOps are supported on both.",
+    )
 
 
 # Define cache classes inline for self-contained configuration
@@ -75,6 +83,11 @@ class L2Cache(Cache):
 
 
 # create the system we are going to simulate
+# Parse options up front so the CPU model can be selected below.
+parser = optparse.OptionParser()
+addOptions(parser)
+(options, args) = parser.parse_args()
+
 system = System()
 
 # Set the clock frequency of the system (and all of its children)
@@ -86,11 +99,11 @@ system.clk_domain.voltage_domain = VoltageDomain()
 system.mem_mode = "timing"  # Use timing accesses
 system.mem_ranges = [AddrRange("512MiB")]  # Create an address range
 
-# Create a simple CPU
-# You can use ISA-specific CPU models for different workloads:
-# `RiscvTimingSimpleCPU`, `ArmTimingSimpleCPU`.
-system.cpu = X86TimingSimpleCPU()
-# system.cpu = X86O3CPU()           # Unfortunately this doesn't work yet
+# Create the CPU: in-order (TimingSimpleCPU) or out-of-order (O3CPU)
+if options.cpu == "o3":
+    system.cpu = X86O3CPU()
+else:
+    system.cpu = X86TimingSimpleCPU()
 
 # Create an L1 cache
 system.l1icache = L1ICache()
@@ -148,10 +161,6 @@ system.huge_page_size = "2MiB"
 # Here we set the X86 "hello world" binary. With other ISAs you must specify
 # workloads compiled to those ISAs. Other "hello world" binaries for other ISAs
 # can be found in "tests/test-progs/hello".
-parser = optparse.OptionParser()
-addOptions(parser)
-(options, args) = parser.parse_args()
-
 thispath = os.path.dirname(os.path.realpath(__file__))
 if options.cmd:
     # Extract just the binary path (first element) for init_compatible
