@@ -10,7 +10,7 @@
 #define BITWIDTH 16
 #endif
 
-#include "pim_core.h"
+#include "cim_core.h"
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -41,7 +41,7 @@ T* pim_alloc_safe(size_t size_bytes, size_t& next_mat) {
     T* ptr = nullptr;
 
     do {
-        ptr = static_cast<T*>(pim_malloc(size_bytes, next_mat));
+        ptr = static_cast<T*>(cim_malloc(size_bytes, next_mat));
         if (ptr != nullptr) break;
         next_mat++;
     } while (next_mat < NR_SUBARRAYS);
