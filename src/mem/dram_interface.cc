@@ -1602,6 +1602,7 @@ DRAMInterface::executeAmbitMicroprogram(
 
     std::string line;
     int line_num = 0;
+    int num_commands = 0;
     while (std::getline(file, line)) {
         line_num++;
 
@@ -1654,6 +1655,7 @@ DRAMInterface::executeAmbitMicroprogram(
             DPRINTF(RowOp, "  [line %d] AAP src=%u dst=%u\n",
                     line_num, src_row, dst_row);
             aapBank(rank_ref, bank_ref, cmd_at, src_row, dst_row, true);
+            num_commands++;
             cmd_at = bank_ref.actAllowedAt;
 
             if (cmd_at - microprogram_start_at >= tREFI) {
@@ -1673,6 +1675,7 @@ DRAMInterface::executeAmbitMicroprogram(
 
             DPRINTF(RowOp, "  [line %d] AP row=%u\n", line_num, row);
             apBank(rank_ref, bank_ref, cmd_at, row);
+            num_commands++;
             cmd_at = bank_ref.actAllowedAt;
 
             if (cmd_at - microprogram_start_at >= tREFI) {
@@ -1688,6 +1691,11 @@ DRAMInterface::executeAmbitMicroprogram(
     }
 
     file.close();
+    // an empty file would otherwise make the operation take no DRAM time
+    panic_if(num_commands == 0,
+             "executeAmbitMicroprogram: '%s' contains no AP/AAP commands; "
+             "see src/mem/ambit_microprograms/README.md to generate it\n",
+             filename.c_str());
     DPRINTF(RowOp, "Finished microprogram (%d lines processed)\n", line_num);
     DPRINTF(RowOp, "Microprogram DRAM-busy span: %llu ticks (entry=%llu, exit=%llu)\n",
             cmd_at - microprogram_entry_at, microprogram_entry_at, cmd_at);
