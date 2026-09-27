@@ -51,10 +51,12 @@
 #include "cpu/o3/dyn_inst.hh"
 #include "cpu/o3/iew.hh"
 #include "cpu/o3/limits.hh"
+#include "cpu/thread_context.hh"
 #include "debug/Drain.hh"
 #include "debug/Fetch.hh"
 #include "debug/HtmCpu.hh"
 #include "debug/LSQ.hh"
+#include "debug/RowOp.hh"
 #include "debug/Writeback.hh"
 #include "params/BaseO3CPU.hh"
 
@@ -752,6 +754,43 @@ LSQ::dumpInsts(ThreadID tid) const
     thread.at(tid).dumpInsts();
 }
 
+namespace
+{
+
+/**
+ * Translate the operand addresses in a RowOp payload to physical addresses in
+ * place, as the TimingSimpleCPU does via WholeTranslationState. RowOps are
+ * non-speculative, so this only happens once the operands are final.
+ */
+void
+translateRowOpOperands(const DynInstPtr &inst, uint8_t *data)
+{
+    auto *payload = reinterpret_cast<Request::RowOpPayload *>(data);
+    gem5::ThreadContext *tc = inst->tcBase();
+    auto translate = [&](Addr &addr, const char *what) {
+        auto req = std::make_shared<Request>(addr, 1, Request::Flags(0),
+                inst->requestorId(), inst->pcState().instAddr(),
+                inst->contextId());
+        Fault fault = tc->getMMUPtr()->translateFunctional(req, tc,
+                BaseMMU::Read);
+        panic_if(fault != NoFault, "RowOp %s operand %#x is not mapped\n",
+                 what, addr);
+        DPRINTF(RowOp, "RowOp %s operand %#x -> %#x\n", what, addr,
+                req->getPaddr());
+        addr = req->getPaddr();
+    };
+    translate(payload->dest, "dst");
+    translate(payload->src1, "src1");
+    if (!Request::is_unary_rowop(payload->op)) {
+        translate(payload->src2, "src2");
+    }
+    if (payload->op == Request::ROWIF_ELSE) {
+        translate(payload->mask, "mask");
+    }
+}
+
+} // anonymous namespace
+
 Fault
 LSQ::pushRequest(const DynInstPtr& inst, bool isLoad, uint8_t *data,
         unsigned int size, Addr addr, Request::Flags flags, uint64_t *res,
@@ -804,15 +843,15 @@ LSQ::pushRequest(const DynInstPtr& inst, bool isLoad, uint8_t *data,
             // results).
             //
             // The memory controller reads the row addresses directly from the
-            // payload (which are 1:1-mapped vaddr==paddr in the huge-page PIM
-            // pool, exactly as the in-order CPU path relies on), not from the
-            // packet address. So we do not translate the payload here; we set
-            // the store up as a completed, uncacheable write to paddr 0 tagged
+            // payload, not from the packet address. So we translate the
+            // operand addresses in the payload (as the in-order CPU does) and
+            // set the store up as a completed, uncacheable write to paddr 0 tagged
             // Request::ROWOP and let the ordinary store writeback path deliver
             // it to memory. This mirrors how TimingSimpleCPU handles RowOps and
             // avoids the (incomplete) speculative multi-translation path that
             // never linked back to the LSQRequest, leaving the store stuck in
             // the store queue forever.
+            translateRowOpOperands(inst, data);
             request = new SingleDataRequest(&thread[tid], inst, false, addr,
                     size, flags, data, res, std::move(amo_op));
             request->_byteEnable = byte_enable;
