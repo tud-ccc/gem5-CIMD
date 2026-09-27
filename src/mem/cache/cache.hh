@@ -88,6 +88,11 @@ class Cache : public BaseCache
     bool access(PacketPtr pkt, CacheBlk *&blk, Cycles &lat,
                 PacketList &writebacks) override;
 
+    bool prepareRowOp(PacketPtr pkt) override;
+
+    /** Valid blocks of this cache that hold operand data of a RowOp. */
+    std::vector<CacheBlk*> rowOpOperandBlocks(PacketPtr pkt);
+
     void handleTimingReqHit(PacketPtr pkt, CacheBlk *blk,
                             Tick request_time) override;
 

@@ -47,6 +47,7 @@
 #include "mem/cache/cache.hh"
 
 #include <cassert>
+#include <set>
 
 #include "base/compiler.hh"
 #include "base/logging.hh"
@@ -176,32 +177,10 @@ Cache::access(PacketPtr pkt, CacheBlk *&blk, Cycles &lat,
             // see [MIMDRAM](https://github.com/CMU-SAFARI/MIMDRAM/blob/
             // 23495f10950d891a95a0b8a05d0a6a88e92de154/gem5/src/mem/cache/
             // cache.cc#L306
-            Request::RowOpPayload* addrs =
-                pkt->getPtr<Request::RowOpPayload>();
-            for (Addr i = 0; i < CIM_ROW_SIZE; i += blkSize) {
-                CacheBlk *old_blk(tags->findBlock({
-                            addrs->dest + i,
-                            pkt->isSecure()
-                }));
-                if (old_blk && old_blk->isValid()) {
-                    BaseCache::evictBlock(old_blk, writebacks);
-                }
-
-                CacheBlk *old_blk_src1(tags->findBlock({
-                            addrs->src1 + i,
-                            pkt->isSecure()
-                }));
-                if (old_blk_src1 && old_blk_src1->isValid()) {
-                    BaseCache::evictBlock(old_blk_src1, writebacks);
-                }
-
-                CacheBlk *old_blk_src2(tags->findBlock({
-                            addrs->src2 + i,
-                            pkt->isSecure()
-                }));
-                if (old_blk_src2 && old_blk_src2->isValid()) {
-                    BaseCache::evictBlock(old_blk_src2, writebacks);
-                }
+            // Normally prepareRowOp() already evicted all operand blocks
+            // before the RowOp was accepted; evict any that are left.
+            for (CacheBlk *old_blk : rowOpOperandBlocks(pkt)) {
+                BaseCache::evictBlock(old_blk, writebacks);
             }
         } else {
             CacheBlk *old_blk(tags->findBlock({
@@ -220,6 +199,58 @@ Cache::access(PacketPtr pkt, CacheBlk *&blk, Cycles &lat,
     }
 
     return BaseCache::access(pkt, blk, lat, writebacks);
+}
+
+std::vector<CacheBlk*>
+Cache::rowOpOperandBlocks(PacketPtr pkt)
+{
+    // A RowOp computes on its operand rows in DRAM: all cached copies of its
+    // operands must be written back (so it computes on up-to-date data) and
+    // invalidated (so later CPU reads of the destination fetch the result).
+    // Operands hold `size` elements of `n` bits packed into 64-bit words, as
+    // in AbstractMemory::perform_rowop().
+    const auto *addrs = pkt->getConstPtr<Request::RowOpPayload>();
+    const Addr bytes = divCeil(addrs->size * addrs->n, 64) * 8;
+    std::vector<Addr> operands{addrs->dest, addrs->src1};
+    if (!Request::is_unary_rowop(addrs->op)) {
+        operands.push_back(addrs->src2);
+    }
+    if (addrs->op == Request::ROWIF_ELSE) {
+        operands.push_back(addrs->mask);
+    }
+    // operands may overlap (e.g. in-place operations), list each block once
+    std::set<Addr> addrs_seen;
+    std::vector<CacheBlk*> blocks;
+    for (Addr base : operands) {
+        for (Addr a = base & ~Addr(blkSize - 1); a < base + bytes;
+             a += blkSize) {
+            if (!addrs_seen.insert(a).second) {
+                continue;
+            }
+            CacheBlk *blk = tags->findBlock({a, pkt->isSecure()});
+            if (blk && blk->isValid()) {
+                blocks.push_back(blk);
+            }
+        }
+    }
+    return blocks;
+}
+
+bool
+Cache::prepareRowOp(PacketPtr pkt)
+{
+    // Evict one block at a time: each eviction allocates at most one write
+    // buffer entry, and once the buffer is full the cache is blocked, which
+    // guarantees a retry of the RowOp once it has drained.
+    for (CacheBlk *blk : rowOpOperandBlocks(pkt)) {
+        if (writeBuffer.numFree() == 0) {
+            return false;
+        }
+        PacketList writebacks;
+        BaseCache::evictBlock(blk, writebacks);
+        doWritebacks(writebacks, clockEdge(lookupLatency + forwardLatency));
+    }
+    return true;
 }
 
 void

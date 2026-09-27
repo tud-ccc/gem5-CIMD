@@ -438,6 +438,16 @@ BaseCache::recvTimingReq(PacketPtr pkt)
         // to the write buffer to ensure they logically precede anything
         // happening below
         doWritebacks(writebacks, clockEdge(lat + forwardLatency));
+
+        // A RowOp computes on the operand rows in DRAM, so the writebacks
+        // of its operands (created by access()) must reach memory before
+        // it. Both go through the write buffer, which sends entries in
+        // ready-time order and keeps insertion order for equal times, so
+        // forward the RowOp no earlier than its writebacks.
+        if (pkt->isRowOp()) {
+            forward_time = std::max(forward_time,
+                                    clockEdge(lat + forwardLatency));
+        }
     }
 
     // Here we charge the headerDelay that takes into account the latencies
@@ -2581,6 +2591,12 @@ BaseCache::CpuSidePort::recvTimingReq(PacketPtr pkt)
         assert(success);
         return true;
     } else if (tryTiming(pkt)) {
+        if (pkt->isRowOp() && !cache.prepareRowOp(pkt)) {
+            // not all operand blocks fit into the write buffer, which is
+            // full now and blocks the cache; retry when it has drained
+            mustSendRetry = true;
+            return false;
+        }
         cache.recvTimingReq(pkt);
         return true;
     }

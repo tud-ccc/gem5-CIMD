@@ -543,6 +543,15 @@ class BaseCache : public ClockedObject
     virtual void recvTimingReq(PacketPtr pkt);
 
     /**
+     * Prepare a RowOp before it is accepted: write back and invalidate the
+     * cached blocks of its operands as far as the write buffer allows.
+     * @return true if no operand block is left in this cache, i.e. the RowOp
+     * can be accepted; false if it has to be retried once the (then full and
+     * blocking) write buffer has drained.
+     */
+    virtual bool prepareRowOp(PacketPtr pkt) { return true; }
+
+    /**
      * Handling the special case of uncacheable write responses to
      * make recvTimingResp less cluttered.
      */

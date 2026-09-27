@@ -152,6 +152,12 @@ class Queue : public Drainable, public Named
         return (allocated >= numEntries - numReserve);
     }
 
+    /** Number of entries that can be allocated before the queue is full. */
+    int numFree() const
+    {
+        return numEntries - numReserve - allocated;
+    }
+
     int numInService() const
     {
         return _numInService;

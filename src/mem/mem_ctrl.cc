@@ -365,14 +365,15 @@ MemCtrl::addToWriteQueue(PacketPtr pkt, unsigned int pkt_count,
         // Add to write queue, and set rowop counter to signal that we must
         // flush the write queue
 
+        // check for room before logRequest() counts the new entry, as in
+        // the regular write path below
+        assert(totalWriteQueueSize < writeBufferSize);
+        stats.wrQLenPdf[totalWriteQueueSize]++;
+
+        writeQueue[mem_pkt->qosValue()].push_back(mem_pkt);
         // log packet (TODO: log as RowOp)
         logRequest(MemCtrl::WRITE, pkt->requestorId(),
                    pkt->qosValue(), mem_pkt->addr, 1);
-        writeQueue[mem_pkt->qosValue()].push_back(mem_pkt);
-
-
-        assert(totalWriteQueueSize < writeBufferSize);
-        stats.wrQLenPdf[totalWriteQueueSize]++;
         mem_intr->writeQueueSize++;
 
         // Update stats
@@ -1217,8 +1218,10 @@ MemCtrl::processNextReqEvent(MemInterface* mem_intr,
                     mem_pkt->qosValue(), mem_pkt->getAddr(), 1,
                     mem_pkt->readyTime - mem_pkt->entryTime);
 
+        // the write queue may be completely full here (writeQueueFull()
+        // only prevents exceeding its capacity)
         assert(mem_intr->writeQueueSize > 0 &&
-            mem_intr->writeQueueSize < mem_intr->writeBufferSize);
+            mem_intr->writeQueueSize <= mem_intr->writeBufferSize);
         mem_intr->writeQueueSize--;
 
 
