@@ -22,6 +22,16 @@
 #include <gem5/m5ops.h>
 
 using namespace pim_core;
+
+// End a timed region only once the CPU can read the RowOp's result: a RowOp is
+// a store that the CPU may retire before it has executed in DRAM, but this load
+// of the destination has to wait for it in the memory controller (and the
+// following m5 op only runs once the load has completed).
+template<typename T>
+static inline void wait_for_result(const T* dst)
+{
+    (void)*static_cast<const volatile T*>(dst);
+}
 using namespace std;
 
 size_t next_mat = 0;
@@ -122,6 +132,7 @@ bool test_axpy(int run_id)
     rowmult(x, x, scalar_alpha, N_ELEMS, sizeof(dtype) * 8);
 
     rowadd(y, y, x, N_ELEMS, sizeof(dtype) * 8);
+    wait_for_result(y);
 
 	m5_dump_stats(0, 0);
 

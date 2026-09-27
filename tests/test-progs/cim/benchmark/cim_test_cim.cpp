@@ -11,6 +11,16 @@
 #include <gem5/m5ops.h>
 
 using namespace pim_core;
+
+// End a timed region only once the CPU can read the RowOp's result: a RowOp is
+// a store that the CPU may retire before it has executed in DRAM, but this load
+// of the destination has to wait for it in the memory controller (and the
+// following m5 op only runs once the load has completed).
+template<typename T>
+static inline void wait_for_result(const T* dst)
+{
+    (void)*static_cast<const volatile T*>(dst);
+}
 using namespace std;
 
 #ifndef N_ELEMS
@@ -153,6 +163,7 @@ int main(int argc, char* argv[])
             m5_reset_stats(0, 0);
             m5_work_begin(1, 0);
             rowand(array1, array2, array1, N_ELEMS, sizeof(dtype) * 8);
+            wait_for_result(array1);
             m5_work_end(1, 0);
 			m5_dump_stats(0, 0);
             if (run_checks) { passed = check_result(array1, array1_initial_val, array2_initial_val, bit_and<dtype>{}); }
@@ -162,6 +173,7 @@ int main(int argc, char* argv[])
             m5_reset_stats(0, 0);
             m5_work_begin(2, 0);
             rowadd(array1, array2, array1, N_ELEMS, sizeof(dtype) * 8);
+            wait_for_result(array1);
             m5_work_end(2, 0);
 			m5_dump_stats(0, 0);
             if (run_checks) passed = check_result(array1, array1_initial_val, array2_initial_val, plus<dtype>{});
@@ -171,6 +183,7 @@ int main(int argc, char* argv[])
             m5_reset_stats(0, 0);
             m5_work_begin(3, 0);
             rowsub(array1, array1, array2, N_ELEMS, sizeof(dtype) * 8);
+            wait_for_result(array1);
             m5_work_end(3, 0);
 			m5_dump_stats(0, 0);
             if (run_checks) passed = check_result(array1, array1_initial_val, array2_initial_val, minus<dtype>{});
@@ -180,6 +193,7 @@ int main(int argc, char* argv[])
             m5_reset_stats(0, 0);
             m5_work_begin(4, 0);
             rowmult(array1, array2, array1, N_ELEMS, sizeof(dtype) * 8);
+            wait_for_result(array1);
             m5_work_end(4, 0);
 			m5_dump_stats(0, 0);
             if (run_checks) passed = check_result(array1, array1_initial_val, array2_initial_val, multiplies<dtype>{});
@@ -189,6 +203,7 @@ int main(int argc, char* argv[])
             m5_reset_stats(0, 0);
             m5_work_begin(5, 0);
             rowdiv(array1, array1, array2, N_ELEMS, sizeof(dtype) * 8);
+            wait_for_result(array1);
             m5_work_end(5, 0);
 			m5_dump_stats(0, 0);
             if (run_checks) passed = check_result(array1, array1_initial_val, array2_initial_val, divides<dtype>{});
@@ -199,6 +214,7 @@ int main(int argc, char* argv[])
             m5_reset_stats(0, 0);
             m5_work_begin(6, 0);
             rowmin(array1, array1, array2, N_ELEMS, sizeof(dtype) * 8);
+            wait_for_result(array1);
             m5_work_end(6, 0);
 			m5_dump_stats(0, 0);
             if (run_checks) passed = check_result(array1, array1_initial_val, array2_initial_val, min_op);
@@ -209,6 +225,7 @@ int main(int argc, char* argv[])
             m5_reset_stats(0, 0);
             m5_work_begin(7, 0);
             rowmax(array1, array1, array2, N_ELEMS, sizeof(dtype) * 8);
+            wait_for_result(array1);
             m5_work_end(7, 0);
 			m5_dump_stats(0, 0);
             if (run_checks) passed = check_result(array1, array1_initial_val, array2_initial_val, max_op);
@@ -221,6 +238,7 @@ int main(int argc, char* argv[])
             m5_reset_stats(0, 0);
             m5_work_begin(8, 0);
             rowequal(array1, array1, array2, N_ELEMS, sizeof(dtype) * 8);
+            wait_for_result(array1);
             m5_work_end(8, 0);
 			m5_dump_stats(0, 0);
             if (run_checks) passed = check_result(array1, array1_initial_val, array2_initial_val, row_equal);
@@ -233,6 +251,7 @@ int main(int argc, char* argv[])
             m5_reset_stats(0, 0);
             m5_work_begin(9, 0);
             rowgreater(array1, array1, array2, N_ELEMS, sizeof(dtype) * 8);
+            wait_for_result(array1);
             m5_work_end(9, 0);
 			m5_dump_stats(0, 0);
             if (run_checks) passed = check_result(array1, array1_initial_val, array2_initial_val, row_greater);
@@ -245,6 +264,7 @@ int main(int argc, char* argv[])
             m5_reset_stats(0, 0);
             m5_work_begin(10, 0);
             rowgreater_equal(array1, array1, array2, N_ELEMS, sizeof(dtype) * 8);
+            wait_for_result(array1);
             m5_work_end(10, 0);
 			m5_dump_stats(0, 0);
             if (run_checks) passed = check_result(array1, array1_initial_val, array2_initial_val, row_greater_equal);
@@ -261,6 +281,7 @@ int main(int argc, char* argv[])
             m5_reset_stats(0, 0);
             m5_work_begin(11, 0);
             rowif_else(array1, array1, array2, array1_initial_val, N_ELEMS, sizeof(dtype) * 8);
+            wait_for_result(array1);
             m5_work_end(11, 0);
 			m5_dump_stats(0, 0);
             if (run_checks) passed = check_result(array1, array1_initial_val, array2_initial_val, mask_initial_val, row_ifelse);
@@ -274,6 +295,7 @@ int main(int argc, char* argv[])
             m5_reset_stats(0, 0);
             m5_work_begin(12, 0);
             rowabs(array1, array1, N_ELEMS, sizeof(dtype) * 8);
+            wait_for_result(array1);
             m5_work_end(12, 0);
 			m5_dump_stats(0, 0);
             if (run_checks) passed = check_result(array1, array1_initial_val, array2_initial_val, row_abs);
@@ -292,6 +314,7 @@ int main(int argc, char* argv[])
             m5_reset_stats(0, 0);
             m5_work_begin(13, 0);
             rowbitcount(array1, array1, array2, N_ELEMS, sizeof(dtype) * 8);
+            wait_for_result(array1);
             m5_work_end(13, 0);
 			m5_dump_stats(0, 0);
             if (run_checks) passed = check_result(array1, array1_initial_val, array2_initial_val, row_bitcount);
