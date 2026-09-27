@@ -616,7 +616,11 @@ TLB::translateFunctional(const RequestPtr &req, ThreadContext *tc,
         if (!pte)
             return std::make_shared<PageFault>(vaddr, true, mode, true, false);
 
-        paddr = pte->paddr | process->pTable->pageOffset(vaddr);
+        // translate() applies the page offset for the entry's page size,
+        // i.e. also the offset within a huge page of the PIM pool (the
+        // plain pageOffset() would drop the bits above 4 KiB)
+        [[maybe_unused]] bool mapped = process->pTable->translate(vaddr, paddr);
+        assert(mapped);
     }
     DPRINTF(TLB, "Translated (functional) %#x -> %#x.\n", vaddr, paddr);
     req->setPaddr(paddr);
