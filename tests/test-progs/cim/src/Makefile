@@ -29,6 +29,7 @@ FULL_OBJ       := $(OBJ_DIR)/cim_full_program.o
 TEST_OBJ       := $(OBJ_DIR)/cim_test_primitives.o
 ROWOPS_OBJ     := $(OBJ_DIR)/cim_test_row_ops_8_16.o
 CIMMALLOC_OBJ  := $(OBJ_DIR)/cim_test_cimmalloc.o
+COHERENCE_OBJ  := $(OBJ_DIR)/cim_test_cache_coherence.o
 WORKLOADS_OBJ  := $(OBJ_DIR)/cim_workloads.o
 KNN_OBJ        := $(OBJ_DIR)/combined_knn.o
 KNN_CPU_OBJ    := $(OBJ_DIR)/combined_knn_cpu.o
@@ -43,6 +44,7 @@ FULL_PROG       := $(BIN_DIR)/cim_full_program
 TEST_PROG       := $(BIN_DIR)/cim_test_primitives
 ROWOPS_PROG     := $(BIN_DIR)/cim_test_row_ops_8_16
 CIMMALLOC_PROG  := $(BIN_DIR)/cim_test_cimmalloc
+COHERENCE_PROG  := $(BIN_DIR)/cim_test_cache_coherence
 WORKLOADS_PROG  := $(BIN_DIR)/cim_workloads
 KNN_PROG        := $(BIN_DIR)/combined_knn
 KNN_CPU_PROG    := $(BIN_DIR)/combined_knn_cpu
@@ -58,12 +60,13 @@ TEST_helloworld := $(HELLO_WORLD_PROG)
 TEST_primitives := $(TEST_PROG)
 TEST_rowops8_16 := $(ROWOPS_PROG)
 TEST_cimmalloc  := $(CIMMALLOC_PROG)
+TEST_coherence  := $(COHERENCE_PROG)
 TEST_workloads  := $(WORKLOADS_PROG)
 TEST_knn        := $(KNN_PROG)
 TEST_axpy       := $(AXPY_PROG)
-TEST_all        := $(HELLO_WORLD_PROG) $(TEST_PROG) $(CIMMALLOC_PROG) $(WORKLOADS_PROG) $(KNN_PROG) $(AXPY_PROG)
+TEST_all        := $(HELLO_WORLD_PROG) $(TEST_PROG) $(CIMMALLOC_PROG) $(COHERENCE_PROG) $(WORKLOADS_PROG) $(KNN_PROG) $(AXPY_PROG)
 
-VALID_TESTS := all primitives cimmalloc workloads knn axpy rowops8_16
+VALID_TESTS := all primitives cimmalloc coherence workloads knn axpy rowops8_16
 ifeq ($(filter $(TEST),$(VALID_TESTS)),)
 $(error Invalid TEST='$(TEST)'. Valid values: $(VALID_TESTS))
 endif
@@ -97,6 +100,8 @@ $(OBJ_DIR)/cim_test_row_ops_8_16.o: cim_test_row_ops_8_16.cpp cim_core.h | $(OBJ
 	$(CXX) $(CXXFLAGS) $(TESTFLAGS) -c $< -o $@
 
 $(OBJ_DIR)/cim_test_cimmalloc.o: cim_test_cimmalloc.cpp cim_core.h | $(OBJ_DIR)
+	$(CXX) $(CXXFLAGS) $(TESTFLAGS) -c $< -o $@
+$(OBJ_DIR)/cim_test_cache_coherence.o: cim_test_cache_coherence.cpp cim_core.h | $(OBJ_DIR)
 	$(CXX) $(CXXFLAGS) $(TESTFLAGS) -c $< -o $@
 
 $(OBJ_DIR)/cim_workloads.o: cim_workloads.cpp cim_core.h | $(OBJ_DIR)
@@ -138,6 +143,8 @@ $(ROWOPS_PROG): $(ROWOPS_OBJ) $(LIB) | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) $< -L$(LIB_DIR) -lcim -L$(M5_LIB_DIR) -lm5 -o $@
 
 $(CIMMALLOC_PROG): $(CIMMALLOC_OBJ) $(LIB) | $(BIN_DIR)
+	$(CXX) $(CXXFLAGS) $< -L$(LIB_DIR) -lcim -o $@
+$(COHERENCE_PROG): $(COHERENCE_OBJ) $(LIB) | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) $< -L$(LIB_DIR) -lcim -o $@
 
 $(WORKLOADS_PROG): $(WORKLOADS_OBJ) $(LIB) | $(BIN_DIR)
