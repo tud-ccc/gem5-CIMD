@@ -108,7 +108,7 @@ check_result(T* res, T* array1_initial_val, T* array2_initial_val, T* mask_initi
 }
 
 const char* op_names[] = {
-    "rowand", "rowadd", "rowsub", "rowmult", // "rowdiv",
+    "rowand", "rowadd", "rowsub", "rowmult", "rowdiv",
     "rowmin", "rowmax", "rowequal", "rowgreater", "rowgreater_equal",
     "rowif_else", "rowabs", "bitcount"
 };
@@ -272,15 +272,19 @@ int main(int argc, char* argv[])
         }
         case 11: {
             auto mask_initial_val = new dtype[N_ELEMS];
+            // the mask is a CIM operand, so it has to live in the operands'
+            // subarray like array1 and array2 (not in ordinary heap memory)
+            auto mask = pim_alloc_safe<dtype>(N_ELEMS*sizeof(dtype), next_mat);
             for (size_t i = 0; i < N_ELEMS; ++i) {
                 mask_initial_val[i] = array1_initial_val[i];
+                mask[i] = array1_initial_val[i];
             }
             auto row_ifelse = [](dtype mask_val, dtype a, dtype b) -> dtype {
                 return (mask_val != 0) ? a : b;
             };
             m5_reset_stats(0, 0);
             m5_work_begin(11, 0);
-            rowif_else(array1, array1, array2, array1_initial_val, N_ELEMS, sizeof(dtype) * 8);
+            rowif_else(array1, array1, array2, mask, N_ELEMS, sizeof(dtype) * 8);
             wait_for_result(array1);
             m5_work_end(11, 0);
 			m5_dump_stats(0, 0);
