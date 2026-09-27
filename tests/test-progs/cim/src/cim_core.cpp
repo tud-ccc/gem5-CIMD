@@ -47,6 +47,8 @@ struct AllocationHeader {
 
 // track available subarrays
 std::vector<SubarrayMeta> subarrays;
+// number of huge pages handed out by `mmapPim` so far
+static size_t pim_pages_allocated = 0;
 using SubarrayLabel = size_t;
 std::unordered_map<SubarrayLabel, SubarrayMeta*> subarray_label_to_subarray;
 

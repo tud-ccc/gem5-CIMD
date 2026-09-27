@@ -13,7 +13,7 @@ using namespace pim_core;
 using namespace std;
 
 const size_t N_ELEMS = 3000;
-const size_t N_ROWOPS = 12;
+const size_t N_ROWOPS = 11; // number of result checks per test round
 size_t next_mat = 0;
 
 template<typename T>
@@ -254,7 +254,7 @@ bool test_every_rowop()
 
 	init_data(array1, array2, array1_initial_val, array2_initial_val);
 
-	auto row_abs = [](dtype a, dtype _) -> dtype {
+	auto row_abs = [](dtype a, dtype) -> dtype {
 		return (a < 0) ? static_cast<dtype>(-a) : a;
 	};
 	m5_dump_reset_stats(0, 0);
@@ -387,7 +387,7 @@ size_t fuzzy_testing()
 	rowif_else(array1, array1, array2, mask, N_ELEMS, sizeof(dtype) * 8);
 	nr_correct += check_result(array1, array1_initial_val, array2_initial_val, mask_initial_val, row_ifelse);
 
-	auto row_abs = [](dtype a, dtype _) -> dtype {
+	auto row_abs = [](dtype a, dtype) -> dtype {
 		return (a < 0) ? static_cast<dtype>(-a) : a;
 	};
 	m5_dump_reset_stats(0, 0);

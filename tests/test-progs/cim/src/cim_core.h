@@ -8,12 +8,11 @@ namespace pim_core {
 
 // in practice all these parameters would be read from the device tree exposed by the modified OS
 // (for which one would need to create a custom OS image with `mmapPim` syscall implemented
-static const void *PIM_BASE_ADDR = (void*) 0x10000000;
+inline const void *const PIM_BASE_ADDR = (void*) 0x10000000;
 static const size_t HUGE_PAGE_SIZE = 2 * 1024 * 1024; 	// 2 MiB
-static size_t pim_pages_allocated = 0;
 
 // see /gem5-CIM/src/mem/DRAMInterface.py for config
-static const size_t NR_COLS_IN_SUBARRAY = 65'535;
+static const size_t NR_COLS_IN_SUBARRAY = 65'536;
 static const size_t BYTES_PER_SUBARRAY_ROW = NR_COLS_IN_SUBARRAY / 8;
 static const size_t NR_ROWS_IN_SUBARRAY = 256;
 static const size_t SUBARRAY_SIZE_BYTES = NR_COLS_IN_SUBARRAY * NR_ROWS_IN_SUBARRAY / 8; // subarray size in bytes

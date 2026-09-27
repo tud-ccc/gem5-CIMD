@@ -7,6 +7,8 @@ AR       := ar
 ARFLAGS  := rcs
 
 # Directories
+GEM5_ROOT := ../../../..
+M5_LIB_DIR := $(GEM5_ROOT)/util/m5/build/x86/out
 BIN_DIR   := ../bin
 BUILD_DIR := build
 OBJ_DIR   := $(BUILD_DIR)/obj
@@ -14,7 +16,7 @@ LIB_DIR   := $(BUILD_DIR)/lib
 
 # Flags
 CXXFLAGS  := -Wall -Wextra -O2 -std=c++20
-CXXFLAGS  += -I/home/alex/Documents/Studium/Sem7/Grosser_Beleg_inf_d_950/gem5-CIMD/include
+CXXFLAGS  += -I$(GEM5_ROOT)/include
 TESTFLAGS := -std=c++20
 
 # Library
@@ -130,10 +132,10 @@ $(FULL_PROG): $(FULL_OBJ) $(LIB) | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) $< -L$(LIB_DIR) -lcim -o $@
 
 $(TEST_PROG): $(TEST_OBJ) $(LIB) | $(BIN_DIR)
-	$(CXX) $(CXXFLAGS) $< -L$(LIB_DIR) -lcim -L/home/alex/Documents/Studium/Sem7/Grosser_Beleg_inf_d_950/gem5-CIMD/util/m5/build/x86/out -lm5 -o $@
+	$(CXX) $(CXXFLAGS) $< -L$(LIB_DIR) -lcim -L$(M5_LIB_DIR) -lm5 -o $@
 
 $(ROWOPS_PROG): $(ROWOPS_OBJ) $(LIB) | $(BIN_DIR)
-	$(CXX) $(CXXFLAGS) $< -L$(LIB_DIR) -lcim -L/home/alex/Documents/Studium/Sem7/Grosser_Beleg_inf_d_950/gem5-CIMD/util/m5/build/x86/out -lm5 -o $@
+	$(CXX) $(CXXFLAGS) $< -L$(LIB_DIR) -lcim -L$(M5_LIB_DIR) -lm5 -o $@
 
 $(CIMMALLOC_PROG): $(CIMMALLOC_OBJ) $(LIB) | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) $< -L$(LIB_DIR) -lcim -o $@
@@ -151,10 +153,10 @@ $(KNN_GPU_PROG): $(KNN_GPU_OBJ) | $(BIN_DIR)
 	hipcc $< -o $@
 
 $(AXPY_PROG): $(AXPY_OBJ) $(LIB) | $(BIN_DIR)
-	$(CXX) $(CXXFLAGS) $< -L$(LIB_DIR) -lcim -L/home/alex/Documents/Studium/Sem7/Grosser_Beleg_inf_d_950/gem5-CIMD/util/m5/build/x86/out -lm5 -o $@
+	$(CXX) $(CXXFLAGS) $< -L$(LIB_DIR) -lcim -L$(M5_LIB_DIR) -lm5 -o $@
 
 $(AXPY_CPU_PROG): $(AXPY_CPU_OBJ) | $(BIN_DIR)
-	$(CXX) $(CXXFLAGS) $< -L/home/alex/Documents/Studium/Sem7/Grosser_Beleg_inf_d_950/gem5-CIMD/util/m5/build/x86/out -lm5 -o $@
+	$(CXX) $(CXXFLAGS) $< -L$(M5_LIB_DIR) -lm5 -o $@
 
 $(AXPY_GPU_PROG): $(AXPY_GPU_OBJ) | $(BIN_DIR)
 	hipcc $< -o $@

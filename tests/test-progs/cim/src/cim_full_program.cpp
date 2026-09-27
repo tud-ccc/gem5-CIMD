@@ -23,7 +23,7 @@ void test_every_rowop()
 	std::printf("Ran cim_malloc and got ptr array1=%p, array2=%p\n", array1, array2);
 
 	// 1. Write data
-	for(int i=0; i<N_ELEMS; ++i) {
+	for(size_t i=0; i<N_ELEMS; ++i) {
 		// array1[i] = 1;
 		array1[i] = i;
 		array2[i] = ~i;
@@ -39,14 +39,14 @@ void test_every_rowop()
 	// rowand(array1, array2, array1);
 
 	// 2. Read result data back in (and check that it is true)
-	for(int i=0; i<N_ELEMS; ++i) {
+	for(size_t i=0; i<N_ELEMS; ++i) {
 		// make sure both arrays have now the correct results stored inside
 #ifdef VERIFY
 		auto res_should = array1_initial_val[i] & array2_initial_val[i];
 		if(array1[i] != res_should)
-			std::printf("WRONG: array1[%d]=%d but should be %d\n", i, array1[i], res_should);
+			std::printf("WRONG: array1[%zu]=%d but should be %d\n", i, array1[i], res_should);
 		else
-			std::printf("Correct result for index=%d\n", i);
+			std::printf("Correct result for index=%zu\n", i);
 #endif
 	}
 
@@ -58,7 +58,7 @@ void test_every_rowop()
 
 using dtype = uint16_t;
 
-int main(int argc, char* argv[])
+int main()
 {
 
 	cout << "Running pim_full_program.cpp" << endl;
