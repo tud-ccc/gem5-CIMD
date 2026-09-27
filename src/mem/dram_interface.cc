@@ -387,8 +387,10 @@ DRAMInterface::doBurstAccess(MemPacket* mem_pkt, Tick next_burst_at,
     // the command; need to ensure minimum bus delay requirement is met
 
     // respect any constraints on the command (e.g. tRCD or tCCD)
-    const Tick col_allowed_at = mem_pkt->isRead() ?
-                                bank_ref.rdAllowedAt : bank_ref.wrAllowedAt;
+    // NOTE: for regular RD/WR bursts this is recomputed after a potential
+    // activate below, as the activate pushes back rdAllowedAt/wrAllowedAt
+    Tick col_allowed_at = mem_pkt->isRead() ?
+                          bank_ref.rdAllowedAt : bank_ref.wrAllowedAt;
 
     // we need to wait until the bus is available before we can issue
     // the command; need to ensure minimum bus delay requirement is met
@@ -484,6 +486,12 @@ DRAMInterface::doBurstAccess(MemPacket* mem_pkt, Tick next_burst_at,
         // constraints caused be a new activation (tRRD and tXAW)
         activateBank(rank_ref, bank_ref, act_tick, mem_pkt->row);
     }
+
+    // respect any constraints on the command (e.g. tRCD or tCCD), which
+    // an activate above may just have updated
+    col_allowed_at = mem_pkt->isRead() ?
+                     bank_ref.rdAllowedAt : bank_ref.wrAllowedAt;
+    cmd_at = std::max({col_allowed_at, next_burst_at, curTick()});
 
     // verify that we have command bandwidth to issue the burst
     // if not, shift to next burst window
@@ -1300,6 +1308,15 @@ DRAMInterface::aapBank(Rank& rank_ref, Bank& bank_ref, Tick act_tick,
         bank_ref.bank, rank_ref.rank, act_tick,
         ranks[rank_ref.rank]->numBanksActive);
 
+    // Record the activation for DRAMPower, so that the precharge closing
+    // this AAP hits an active bank. DRAMPower cannot express the second,
+    // overlapped activate to the same bank, so it is not recorded.
+    rank_ref.cmdList.push_back(Command(MemCommand::ACT, bank_ref.bank,
+                               act_tick));
+
+    DPRINTF(DRAMPower, "%llu,ACT,%d,%d\n", divCeil(act_tick, tCK) -
+            timeStampOffset, bank_ref.bank, rank_ref.rank);
+
     // The next access has to respect tRAS plus a bit for this bank
     if (act_overlapped) {
         bank_ref.preAllowedAt = act_tick + tRAS + tWLOV;
@@ -1503,6 +1520,10 @@ DRAMInterface::executeRefreshDuringMicroprogram(
 
     Tick act_allowed_at = pre_at + tRP;
 
+    // as in Rank::processRefreshEvent, only issue a precharge-all if a bank
+    // is actually open (checked before the loop closes them)
+    const bool any_bank_active = rank_ref.numBanksActive != 0;
+
     for (auto &b : rank_ref.banks) {
         if (b.openRow != Bank::NO_ROW) {
             prechargeBank(rank_ref, b, pre_at, true, false);
@@ -1512,7 +1533,9 @@ DRAMInterface::executeRefreshDuringMicroprogram(
         }
     }
 
-    rank_ref.cmdList.push_back(Command(MemCommand::PREA, 0, pre_at));
+    if (any_bank_active) {
+        rank_ref.cmdList.push_back(Command(MemCommand::PREA, 0, pre_at));
+    }
 
     cmd_at = std::max(cmd_at, act_allowed_at);
 
