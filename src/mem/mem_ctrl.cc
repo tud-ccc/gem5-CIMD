@@ -343,6 +343,12 @@ MemCtrl::addToWriteQueue(PacketPtr pkt, unsigned int pkt_count,
           assert(mem_pkt->bank == mem_pkt2->bank);
 		  assert(mem_pkt->subarray== mem_pkt2->subarray);
         }
+        // Make sure the mask of rowif_else is in the same subarray, too
+        if (addrs->op == Request::ROWIF_ELSE) {
+            assert(mem_pkt->rank == mem_pkt3->rank);
+            assert(mem_pkt->bank == mem_pkt3->bank);
+            assert(mem_pkt->subarray == mem_pkt3->subarray);
+        }
         mem_pkt->src1_row = mem_pkt1->row;
         mem_pkt->src2_row = mem_pkt2->row;
         mem_pkt->mask_row = mem_pkt3->row;
