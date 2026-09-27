@@ -145,8 +145,12 @@ class TimeBuffer
         char *ptr = data;
         for (unsigned i = 0; i < size; i++) {
             index[i] = ptr;
+            // value-initialize: zero-initializes members without a
+            // constructor (e.g. FetchStruct::size). The memset before the
+            // placement new does not guarantee that, as the object's lifetime
+            // only starts with the new (GCC 16 removes the memset).
             std::memset(ptr, 0, sizeof(T));
-            new (ptr) T;
+            new (ptr) T();
             ptr += sizeof(T);
         }
 
@@ -186,7 +190,7 @@ class TimeBuffer
             ptr -= size;
         (reinterpret_cast<T *>(index[ptr]))->~T();
         std::memset(index[ptr], 0, sizeof(T));
-        new (index[ptr]) T;
+        new (index[ptr]) T();
     }
 
   protected:
