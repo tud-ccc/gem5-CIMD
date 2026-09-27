@@ -1002,14 +1002,14 @@ DRAMInterface::decodePacket(const PacketPtr pkt, Addr pkt_addr,
 
         // lastly, get the row bits, no need to remove them from addr
         row = addr % rowsPerBank;
-    } else if (addrMapping == enums::RaBaMaRoCh) {
+    } else if (addrMapping == enums::RaBaSuRoCh) {
 		// Channel bits: 0
 		// gem5 seems to model each channel behind a separate Memory Controller (so basically /1)
 		// - see https://github.com/orgs/gem5/discussions/2747#discussioncomment-14971006
 
-		// Address decomposition order (LSB to MSB): Channel, Column(Byte), Row, Mat, Bank, Rank
-		// Since allocations are mat-by-mat, addresses are laid out as:
-		// [byte_within_row][row_within_mat][mat][bank][rank]
+		// Address decomposition order (LSB to MSB): Channel, Column(Byte), Row, Subarray, Bank, Rank
+		// Since allocations are subarray-by-subarray, addresses are laid out as:
+		// [byte_within_row][row_within_subarray][subarray][bank][rank]
 
 		// Channel bits (assumed to be handled by separate memory controllers)
 		// Skip channel extraction
@@ -1020,11 +1020,11 @@ DRAMInterface::decodePacket(const PacketPtr pkt, Addr pkt_addr,
 		Addr _ = addr % BYTES_PER_MAT_ROW;  // byteoffset
 		addr = addr / BYTES_PER_MAT_ROW;
 
-		// Extract Row bits (which row within the mat)
+		// Extract Row bits (which row within the subarray)
 		row = addr % rowsPerSubarray;
 		addr = addr / rowsPerSubarray;
 
-		// Extract Mat bits
+		// Extract Subarray bits
 		subarray = addr % subarraysPerBank;
 		addr = addr / subarraysPerBank;
 
@@ -1039,7 +1039,7 @@ DRAMInterface::decodePacket(const PacketPtr pkt, Addr pkt_addr,
 
 
     if(pkt->isRowOp())
-        DPRINTF(RowOp, "Address: %#x Rank %d Bank %d Row %d Mat %d\n",
+        DPRINTF(RowOp, "Address: %#x Rank %d Bank %d Row %d Subarray %d\n",
                 pkt_addr, rank, bank, row, subarray);
 
     assert(rank < ranksPerChannel);

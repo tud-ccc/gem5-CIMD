@@ -51,7 +51,7 @@ from m5.proxy import *
 # maximises parallelism.
 class AddrMap(Enum):
     vals = ["RoRaBaChCo", "RoRaBaCoCh", "RoCoRaBaCh",
-             "RaBaMaRoCh" # for PIM
+             "RaBaSuRoCh" # for PIM (Rank, Bank, Subarray, Row, Column)
             ]
 
 
