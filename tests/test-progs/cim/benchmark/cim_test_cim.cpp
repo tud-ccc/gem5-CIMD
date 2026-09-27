@@ -233,7 +233,7 @@ int main(int argc, char* argv[])
         }
         case 8: {
             auto row_equal = [](dtype a, dtype b) -> dtype {
-                return (a == b) ? static_cast<dtype>(0xFFFF) : static_cast<dtype>(0);
+                return (a == b) ? static_cast<dtype>(~0ULL) : static_cast<dtype>(0); // true = all ones
             };
             m5_reset_stats(0, 0);
             m5_work_begin(8, 0);
@@ -246,7 +246,7 @@ int main(int argc, char* argv[])
         }
         case 9: {
             auto row_greater = [](dtype a, dtype b) -> dtype {
-                return (a > b) ? static_cast<dtype>(0xFFFF) : static_cast<dtype>(0);
+                return (a > b) ? static_cast<dtype>(~0ULL) : static_cast<dtype>(0); // true = all ones
             };
             m5_reset_stats(0, 0);
             m5_work_begin(9, 0);
@@ -259,7 +259,7 @@ int main(int argc, char* argv[])
         }
         case 10: {
             auto row_greater_equal = [](dtype a, dtype b) -> dtype {
-                return (a >= b) ? static_cast<dtype>(0xFFFF) : static_cast<dtype>(0);
+                return (a >= b) ? static_cast<dtype>(~0ULL) : static_cast<dtype>(0); // true = all ones
             };
             m5_reset_stats(0, 0);
             m5_work_begin(10, 0);
