@@ -417,7 +417,7 @@ SyscallDescTable<EmuLinux::SyscallABI64> EmuLinux::syscallDescs64 = {
     { 449, "futex_waitv" },
     { 450, "set_mempolicy_home_node" },
      // new syscall for CIM
-    { 500, "mmap_pim_func", mmapPimFunc<X86Linux64>},
+    { 500, "mmap_cim_func", mmapCIMFunc<X86Linux64>},
 };
 
 } // namespace X86ISA

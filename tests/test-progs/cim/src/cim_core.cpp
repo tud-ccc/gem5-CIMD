@@ -47,7 +47,7 @@ struct AllocationHeader {
 
 // track available subarrays
 std::vector<SubarrayMeta> subarrays;
-// number of huge pages handed out by `mmapPim` so far
+// number of huge pages handed out by `mmapCIM` so far
 static size_t pim_pages_allocated = 0;
 using SubarrayLabel = size_t;
 std::unordered_map<SubarrayLabel, SubarrayMeta*> subarray_label_to_subarray;
@@ -55,17 +55,17 @@ std::unordered_map<SubarrayLabel, SubarrayMeta*> subarray_label_to_subarray;
 // CPU-side allocation tracking - no PIM memory wasted
 static std::unordered_map<void*, AllocationHeader> alloc_headers;
 
-void* mmapPim(void* addr,
+void* mmapCIM(void* addr,
               size_t length,
               size_t subarray_label)
 {
-    void* ret = (void*) syscall(__NR_mmapPim,
+    void* ret = (void*) syscall(__NR_mmapCIM,
                                 addr,
                                 length,
                                 subarray_label);
 
     if (ret == MAP_FAILED)
-        perror("mmapPim syscall failed");
+        perror("mmapCIM syscall failed");
     return ret;
 }
 
@@ -154,8 +154,8 @@ void* cim_malloc(const size_t size, const size_t subarray_label) {
     }
 
     // 3. Allocate new huge page
-    void* next_hugepage_start = ((char*) PIM_BASE_ADDR) + (pim_pages_allocated * HUGE_PAGE_SIZE);
-    auto ret = mmapPim(next_hugepage_start, size, subarray_label);
+    void* next_hugepage_start = ((char*) CIM_BASE_ADDR) + (pim_pages_allocated * HUGE_PAGE_SIZE);
+    auto ret = mmapCIM(next_hugepage_start, size, subarray_label);
     if (ret == MAP_FAILED || !next_hugepage_start) {
         std::fprintf(stderr, "cim_malloc: failed to allocate %zu bytes\n", size);
         return nullptr;

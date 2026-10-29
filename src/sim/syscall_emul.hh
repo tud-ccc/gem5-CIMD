@@ -2009,7 +2009,7 @@ mmapFunc(SyscallDesc *desc, ThreadContext *tc,
 {
 
 	if (tc->getSystemPtr()->hugePagePoolrange().contains(start)) {
-		warn("vaddr=0x%x is in huge page pool. Use `mmap_pim_func` syscall", start);
+		warn("vaddr=0x%x is in huge page pool. Use `mmap_cim_func` syscall", start);
         return -EINVAL;
 	}
 
@@ -3255,10 +3255,10 @@ getrandomFunc(SyscallDesc *desc, ThreadContext *tc,
  */
 template <class OS>
 SyscallReturn
-mmapPimFunc(SyscallDesc *desc, ThreadContext *tc,
+mmapCIMFunc(SyscallDesc *desc, ThreadContext *tc,
          VPtr<> start, typename OS::size_t size)
 {
-    DPRINTF(RowOp, "mmapPimFunc: Mapping region starting at vaddr=0x%X of %d bytes to a paddr", start, size);
+    DPRINTF(RowOp, "mmapCIMFunc: Mapping region starting at vaddr=0x%X of %d bytes to a paddr", start, size);
 
 	// TODO: use *huge page pool* (allocated at bootup time)
     auto p = tc->getProcessPtr();

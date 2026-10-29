@@ -4,11 +4,11 @@
 
 namespace pim_core {
 
-#define __NR_mmapPim 500
+#define __NR_mmapCIM 500
 
 // in practice all these parameters would be read from the device tree exposed by the modified OS
-// (for which one would need to create a custom OS image with `mmapPim` syscall implemented
-inline const void *const PIM_BASE_ADDR = (void*) 0x10000000;
+// (for which one would need to create a custom OS image with `mmapCIM` syscall implemented
+inline const void *const CIM_BASE_ADDR = (void*) 0x10000000;
 static const size_t HUGE_PAGE_SIZE = 2 * 1024 * 1024; 	// 2 MiB
 
 // see /gem5-CIM/src/mem/DRAMInterface.py for config
@@ -21,7 +21,7 @@ static const size_t NR_HUGEPAGES = 20;
 static const size_t NR_SUBARRAYS = NR_HUGEPAGES * SUBARRAYS_PER_HUGE_PAGE;
 
 /** Allocates a new huge page if current huge page pool is not enough to fulfill request */
-void* mmapPim(void* addr, size_t length);
+void* mmapCIM(void* addr, size_t length);
 /**
  * @param size in BYTES !!
  */

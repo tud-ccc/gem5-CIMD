@@ -372,7 +372,7 @@ TLB::translate(const RequestPtr &req,
 		if (!pte) {
 			// Page not yet allocated - allocate it now
 			DPRINTF(HugePage, "TLB: PIM huge page not found, allocating for vaddr=%#x\n", vaddr);
-			// For PIM, the page should already be allocated via mmapPim, but if not,
+			// For PIM, the page should already be allocated via mmapCIM, but if not,
 			// we can try to allocate it
 			Fault fault = std::make_shared<PageFault>(vaddr, true, mode, true, false);
 			return fault;
