@@ -9,7 +9,7 @@
 #include <iostream>
 #include <gem5/m5ops.h>
 
-using namespace pim_core;
+using namespace cim_core;
 using namespace std;
 
 const size_t N_ELEMS = 3000;

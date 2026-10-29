@@ -1,8 +1,11 @@
 #include "cim_core.h"
 #include <cstddef>
-#include <cstdlib>
 #include <cstdio>
+#include <cstdlib>
 #include <iostream>
+#include <iterator>
+#include <map>
+#include <memory>
 #include <sys/mman.h>
 #include <unistd.h>
 #include <unordered_map>
@@ -10,113 +13,98 @@
 
 using namespace std;
 
-namespace pim_core {
+namespace cim_core {
 
-/** Tracks <u>contiguous</u> free space inside a subarray */
-struct FreeSubarrayBlock {
-    void * virt_addr;
-    // free blocks are tracked at row granularity
-    size_t nr_free_rows_in_block;
-    FreeSubarrayBlock* next_free_subarray_block;
-    FreeSubarrayBlock* prev_free_subarray_block;
-};
+namespace {
 
-/** Stores info about free rows in a subarray */
-class SubarrayMeta {
-  public:
+/** Free rows of one DRAM subarray */
+struct SubarrayMeta {
     // Virtual address that maps to this DRAM subarray
-    void *virt_addr = nullptr;
-    // Number of rows that are free in this subarray
-    FreeSubarrayBlock* free_blocks_head;
+    char* virt_addr;
+    // Contiguous runs of free rows: start address -> number of rows.
+    // Sorted by address, so a freed run can be merged with its neighbours.
+    map<char*, size_t> free_runs;
 
     // newly created subarrays are considered to be fully free
-    SubarrayMeta(void *virt_addr):
-        virt_addr(virt_addr)
-    {
-        // Create ONE block representing all free rows in this subarray
-        free_blocks_head = new FreeSubarrayBlock{ virt_addr, NR_ROWS_IN_SUBARRAY, nullptr, nullptr};
-    };
+    explicit SubarrayMeta(char* virt_addr):
+        virt_addr(virt_addr),
+        free_runs{{virt_addr, NR_ROWS_IN_SUBARRAY}}
+    {}
 };
 
 /** For freeing allocated rows - stored CPU-side */
 struct AllocationHeader {
-    size_t num_rows;  // Number of rows allocated
-    SubarrayMeta* subarray;     // Which subarray this belongs to
-    void* alloc_start; // Start of allocation
+    size_t num_rows;        // Number of rows allocated
+    SubarrayMeta* subarray; // Which subarray this belongs to
 };
 
-// track available subarrays
-std::vector<SubarrayMeta> subarrays;
+// track available subarrays; heap-allocated so that the pointers below stay
+// valid when the vector grows
+vector<unique_ptr<SubarrayMeta>> subarrays;
 // number of huge pages handed out by `mmapCIM` so far
-static size_t pim_pages_allocated = 0;
+size_t hugepages_allocated = 0;
 using SubarrayLabel = size_t;
-std::unordered_map<SubarrayLabel, SubarrayMeta*> subarray_label_to_subarray;
+unordered_map<SubarrayLabel, SubarrayMeta*> subarray_label_to_subarray;
 
-// CPU-side allocation tracking - no PIM memory wasted
-static std::unordered_map<void*, AllocationHeader> alloc_headers;
+// CPU-side allocation tracking - no CIM memory wasted
+unordered_map<void*, AllocationHeader> alloc_headers;
 
-void* mmapCIM(void* addr,
-              size_t length,
-              size_t subarray_label)
+size_t rows_for(const size_t size)
 {
-    void* ret = (void*) syscall(__NR_mmapCIM,
-                                addr,
-                                length,
-                                subarray_label);
+    return (size + BYTES_PER_SUBARRAY_ROW - 1) / BYTES_PER_SUBARRAY_ROW;
+}
+
+/** First fit: take `num_rows` rows from the start of the first run that is large enough */
+char* take_rows(SubarrayMeta& subarray, const size_t num_rows)
+{
+    for (auto it = subarray.free_runs.begin(); it != subarray.free_runs.end(); ++it) {
+        if (it->second < num_rows)
+            continue;
+        char* addr = it->first;
+        const size_t rows_left = it->second - num_rows;
+        subarray.free_runs.erase(it);
+        if (rows_left > 0)
+            subarray.free_runs.emplace(addr + num_rows * BYTES_PER_SUBARRAY_ROW, rows_left);
+        return addr;
+    }
+    return nullptr;
+}
+
+/** Return rows to the subarray, merging with the free runs right before and after */
+void give_back_rows(SubarrayMeta& subarray, char* addr, size_t num_rows)
+{
+    auto& runs = subarray.free_runs;
+    auto next = runs.lower_bound(addr);
+    if (next != runs.begin()) {
+        auto prev = std::prev(next);
+        if (prev->first + prev->second * BYTES_PER_SUBARRAY_ROW == addr) {
+            addr = prev->first;
+            num_rows += prev->second;
+            runs.erase(prev);
+        }
+    }
+    if (next != runs.end() && addr + num_rows * BYTES_PER_SUBARRAY_ROW == next->first) {
+        num_rows += next->second;
+        runs.erase(next);
+    }
+    runs.emplace(addr, num_rows);
+}
+
+} // namespace
+
+void* mmapCIM(void* addr, size_t length)
+{
+    void* ret = (void*) syscall(__NR_mmapCIM, addr, length);
 
     if (ret == MAP_FAILED)
         perror("mmapCIM syscall failed");
     return ret;
 }
 
-void *find_free_space_in_subarray(SubarrayMeta* subarray, const size_t size, const size_t subarray_label)
-{
-    const size_t num_rows = (size + BYTES_PER_SUBARRAY_ROW - 1) / BYTES_PER_SUBARRAY_ROW;
-    auto block = subarray->free_blocks_head;
-
-    while (block != nullptr) {
-        if (block->nr_free_rows_in_block >= num_rows) {
-            // Allocate from the START of this free block
-            auto allocated_addr = block->virt_addr;
-
-            // Shrink the block by moving its start forward
-            block->virt_addr = ((char*) block->virt_addr) + num_rows * BYTES_PER_SUBARRAY_ROW;
-            block->nr_free_rows_in_block -= num_rows;
-
-            if (block->nr_free_rows_in_block == 0) {
-                // Block is fully used - remove from list
-                if (block == subarray->free_blocks_head) {
-                    // Removing head
-                    subarray->free_blocks_head = block->next_free_subarray_block;
-                    if (block->next_free_subarray_block) {
-                        block->next_free_subarray_block->prev_free_subarray_block = nullptr;
-                    }
-                } else {
-                    // Removing middle/end node
-                    if (block->prev_free_subarray_block) {
-                        block->prev_free_subarray_block->next_free_subarray_block = block->next_free_subarray_block;
-                    }
-                    if (block->next_free_subarray_block) {
-                        block->next_free_subarray_block->prev_free_subarray_block = block->prev_free_subarray_block;
-                    }
-                }
-
-                delete block;
-            }
-
-            subarray_label_to_subarray[subarray_label] = subarray;
-            return allocated_addr;
-        }
-        block = block->next_free_subarray_block;
-    }
-
-    return nullptr;
-}
-
-/// Performs allocation of operands in the region reserved for PIM
+/// Performs allocation of operands in the region reserved for CIM
 void* cim_malloc(const size_t size, const size_t subarray_label) {
     // sanity check
-    if (size > SUBARRAY_SIZE_BYTES) {
+    if (size == 0 || size > SUBARRAY_SIZE_BYTES) {
         return nullptr;
     }
 
@@ -127,13 +115,15 @@ void* cim_malloc(const size_t size, const size_t subarray_label) {
         abort();
     }
 
+    const size_t num_rows = rows_for(size);
+
     // Helper lambda: allocate from a specific subarray and register header
     auto allocate_from_subarray = [&](SubarrayMeta* subarray) -> void* {
-        auto vaddr = find_free_space_in_subarray(subarray, size, subarray_label);
+        char* vaddr = take_rows(*subarray, num_rows);
         if (!vaddr) return nullptr;
 
-        const size_t num_rows = (size + BYTES_PER_SUBARRAY_ROW - 1) / BYTES_PER_SUBARRAY_ROW;
-        alloc_headers[vaddr] = AllocationHeader{ num_rows, subarray, vaddr };
+        subarray_label_to_subarray[subarray_label] = subarray;
+        alloc_headers[vaddr] = AllocationHeader{ num_rows, subarray };
         return vaddr;
     };
 
@@ -141,33 +131,35 @@ void* cim_malloc(const size_t size, const size_t subarray_label) {
     if (it != subarray_label_to_subarray.end()) {
         auto* ptr = allocate_from_subarray(it->second);
         if (!ptr) {
-            cerr << "PIM OOM on subarray " << subarray_label << endl;
+            cerr << "CIM OOM on subarray " << subarray_label << endl;
             return nullptr;
         }
         return ptr;
     }
 
-    // 2. Check if there is some space in already allocated PIM subarrays
+    // 2. Check if there is some space in already allocated CIM subarrays
     for (auto& subarray : subarrays) {
-        auto* ptr = allocate_from_subarray(&subarray);
+        auto* ptr = allocate_from_subarray(subarray.get());
         if (ptr) return ptr;
     }
 
     // 3. Allocate new huge page
-    void* next_hugepage_start = ((char*) CIM_BASE_ADDR) + (pim_pages_allocated * HUGE_PAGE_SIZE);
-    auto ret = mmapCIM(next_hugepage_start, size, subarray_label);
-    if (ret == MAP_FAILED || !next_hugepage_start) {
+    if (hugepages_allocated >= NR_HUGEPAGES) {
+        cerr << "ERROR: huge page pool exhausted (" << NR_HUGEPAGES << " huge pages)" << endl;
+        return nullptr;
+    }
+    char* next_hugepage_start = (char*) CIM_BASE_ADDR + hugepages_allocated * HUGE_PAGE_SIZE;
+    if (mmapCIM(next_hugepage_start, HUGE_PAGE_SIZE) == MAP_FAILED) {
         std::fprintf(stderr, "cim_malloc: failed to allocate %zu bytes\n", size);
         return nullptr;
     }
-    pim_pages_allocated++;
+    hugepages_allocated++;
 
     for (size_t i = 0; i < SUBARRAYS_PER_HUGE_PAGE; ++i) {
-        auto virt_addr = (char*)next_hugepage_start + SUBARRAY_SIZE_BYTES * i;
-        subarrays.push_back(SubarrayMeta(virt_addr));
+        subarrays.push_back(make_unique<SubarrayMeta>(next_hugepage_start + SUBARRAY_SIZE_BYTES * i));
     }
 
-    return allocate_from_subarray(&subarrays.back());
+    return allocate_from_subarray(subarrays.back().get());
 }
 
 /// Frees the memory previously allocated with `cim_malloc()`
@@ -181,46 +173,8 @@ void cim_free(void* ptr) {
         return;
     }
 
-    const AllocationHeader& header = it->second;
-    SubarrayMeta* subarray      = header.subarray;
-    size_t   num_rows = header.num_rows;
-
-    // Insert a new free block back into the subarray's free list
-    auto* new_block = new FreeSubarrayBlock{
-        ptr,                        // virt_addr: freed region starts here
-        num_rows,                   // nr_free_rows_in_block
-        subarray->free_blocks_head, // next
-        nullptr                     // prev
-    };
-
-    if (subarray->free_blocks_head)
-        subarray->free_blocks_head->prev_free_subarray_block = new_block;
-
-    subarray->free_blocks_head = new_block;
-
-    // Remove from CPU-side tracking
+    give_back_rows(*it->second.subarray, static_cast<char*>(ptr), it->second.num_rows);
     alloc_headers.erase(it);
-
-    // Coalesce adjacent free blocks to prevent fragmentation
-    auto* block = subarray->free_blocks_head;
-    while (block && block->next_free_subarray_block) {
-        auto* next = block->next_free_subarray_block;
-        void* block_end = (char*)block->virt_addr + block->nr_free_rows_in_block * BYTES_PER_SUBARRAY_ROW;
-
-        if (block_end == next->virt_addr) {
-            // Blocks are adjacent - merge them
-            block->nr_free_rows_in_block += next->nr_free_rows_in_block;
-            block->next_free_subarray_block    = next->next_free_subarray_block;
-
-            if (next->next_free_subarray_block)
-                next->next_free_subarray_block->prev_free_subarray_block = block;
-
-            delete next;
-            // Don't advance - check if newly merged block is adjacent to next one
-        } else {
-            block = block->next_free_subarray_block;
-        }
-    }
 }
 
-} // namespace pim_core
+} // namespace cim_core

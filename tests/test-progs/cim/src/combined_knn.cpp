@@ -17,7 +17,7 @@
 #include <map>
 #include <algorithm>
 
-using namespace pim_core;
+using namespace cim_core;
 using namespace std;
 
 template<typename T>

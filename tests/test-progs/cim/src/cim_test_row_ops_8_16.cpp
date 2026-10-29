@@ -5,7 +5,7 @@
 #include <cstring>
 #include <gem5/m5ops.h>
 
-using namespace pim_core;
+using namespace cim_core;
 
 const size_t N_ELEMS = 1000;
 size_t next_mat = 0;

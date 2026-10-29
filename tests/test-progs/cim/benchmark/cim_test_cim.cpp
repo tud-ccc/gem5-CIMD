@@ -10,7 +10,7 @@
 #include <string>
 #include <gem5/m5ops.h>
 
-using namespace pim_core;
+using namespace cim_core;
 
 // End a timed region only once the CPU can read the RowOp's result: a RowOp is
 // a store that the CPU may retire before it has executed in DRAM, but this load

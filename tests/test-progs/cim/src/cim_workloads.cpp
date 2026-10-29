@@ -13,7 +13,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <type_traits>
-using namespace pim_core;
+using namespace cim_core;
 using namespace std;
 
 /* Common config */

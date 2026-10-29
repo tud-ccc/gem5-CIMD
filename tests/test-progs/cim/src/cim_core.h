@@ -2,9 +2,9 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace pim_core {
-
 #define __NR_mmapCIM 500
+
+namespace cim_core {
 
 // in practice all these parameters would be read from the device tree exposed by the modified OS
 // (for which one would need to create a custom OS image with `mmapCIM` syscall implemented
@@ -17,19 +17,24 @@ static const size_t BYTES_PER_SUBARRAY_ROW = NR_COLS_IN_SUBARRAY / 8;
 static const size_t NR_ROWS_IN_SUBARRAY = 256;
 static const size_t SUBARRAY_SIZE_BYTES = NR_COLS_IN_SUBARRAY * NR_ROWS_IN_SUBARRAY / 8; // subarray size in bytes
 static const size_t SUBARRAYS_PER_HUGE_PAGE = HUGE_PAGE_SIZE / SUBARRAY_SIZE_BYTES;
+// must match `system.huge_pages_nr` in configs/cim/cim.py
 static const size_t NR_HUGEPAGES = 20;
 static const size_t NR_SUBARRAYS = NR_HUGEPAGES * SUBARRAYS_PER_HUGE_PAGE;
 
-/** Allocates a new huge page if current huge page pool is not enough to fulfill request */
+/**
+ * Maps `length` bytes (rounded up to whole huge pages) of the huge page pool at `addr`.
+ * Called by `cim_malloc()` when its huge pages are full; returns MAP_FAILED on error.
+ */
 void* mmapCIM(void* addr, size_t length);
 /**
  * @param size in BYTES !!
+ * @param subarray_label allocations with the same label end up in the same subarray
  */
 void* cim_malloc(size_t size, size_t subarray_label);
 void cim_free(void* ptr);
 
 /**
- * @oaram n in **BITS** (since we also allow for <1byte, eg 4bit operands are supported
+ * @param n in **BITS** (since we also allow for <1byte, eg 4bit operands are supported
  */
 template<typename T>
 static inline void rowand(T* dst, const T* src1, const T* src2, const size_t size, const size_t n) {
@@ -256,6 +261,7 @@ static inline void rowif_else(T* dst, const T* src1, const T* src2, const T* mas
 	);
 }
 
+// ROWBITCOUNT only counts `src1`; `src2` is ignored (kept for API compatibility)
 template<typename T>
 static inline void rowbitcount(T* dst, const T* src1, const T* src2, const size_t size, const size_t n) {
 	register uint64_t rdi asm("rdi") = (uint64_t)dst;
@@ -287,6 +293,7 @@ static inline void rowabs(T* dst, const T* src, const size_t size, const size_t 
 	);
 }
 
+// destination-only: rsi/rdx are not read by ROWTRSP_INIT
 template<typename T>
 static inline void rowtrsp_init(T* arr, const size_t size, const size_t n) {
 	register uint64_t rdi asm("rdi") = (uint64_t)arr;
@@ -303,4 +310,4 @@ static inline void rowtrsp_init(T* arr, const size_t size, const size_t n) {
 	);
 }
 
-}
+} // namespace cim_core

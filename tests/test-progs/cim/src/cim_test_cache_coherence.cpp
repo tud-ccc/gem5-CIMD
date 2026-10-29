@@ -10,7 +10,7 @@
 #include <cstdio>
 #include <cstdlib>
 
-using namespace pim_core;
+using namespace cim_core;
 
 int main( int argc, char** argv )
 {

@@ -8,7 +8,7 @@
 #include <functional>
 #include <iostream>
 
-using namespace pim_core;
+using namespace cim_core;
 using namespace std;
 
 const size_t N_ELEMS = 300'000;
