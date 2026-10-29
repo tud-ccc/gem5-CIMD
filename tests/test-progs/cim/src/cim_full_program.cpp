@@ -6,7 +6,7 @@
 #include <iostream>
 
 using namespace std;
-using namespace pim_core;
+using namespace cim_core;
 
 #define VERIFY 1
 const size_t N_ELEMS = 30;
@@ -15,11 +15,11 @@ void test_every_rowop()
 {
 
 #ifdef VERIFY
-	auto array1_initial_val = static_cast<uint16_t*>(malloc(N_ELEMS));
-	auto array2_initial_val = static_cast<uint16_t*>(malloc(N_ELEMS));
+	auto array1_initial_val = static_cast<uint16_t*>(malloc(N_ELEMS * sizeof(uint16_t)));
+	auto array2_initial_val = static_cast<uint16_t*>(malloc(N_ELEMS * sizeof(uint16_t)));
 #endif
-	auto array1 = static_cast<uint16_t*>(cim_malloc(N_ELEMS, 0));
-	auto array2 = static_cast<uint16_t*>(cim_malloc(N_ELEMS, 0));
+	auto array1 = static_cast<uint16_t*>(cim_malloc(N_ELEMS * sizeof(uint16_t), 0));
+	auto array2 = static_cast<uint16_t*>(cim_malloc(N_ELEMS * sizeof(uint16_t), 0));
 	std::printf("Ran cim_malloc and got ptr array1=%p, array2=%p\n", array1, array2);
 
 	// 1. Write data
@@ -34,7 +34,7 @@ void test_every_rowop()
 #endif
 	}
 
-	rowand(array1, array2, array1, N_ELEMS, sizeof(uint16_t));
+	rowand(array1, array2, array1, N_ELEMS, 8 * sizeof(uint16_t)); // n is in bits
 	// rowand(array1, array2, array1);
 	// rowand(array1, array2, array1);
 
@@ -73,7 +73,7 @@ int main()
 	}
 
 	std::printf("Ran cim_malloc and got ptr array1=%p, array2=%p\n", array1, array2);
-	rowand(array1, array2, array1, N_ELEMS, sizeof(uint16_t));
+	rowand(array1, array2, array1, N_ELEMS, 8 * sizeof(uint16_t)); // n is in bits
 
 	for(uint16_t i=0; i<N_ELEMS; ++i) {
 		std::printf("%d, %d\n", array1[i], array2[i]);
